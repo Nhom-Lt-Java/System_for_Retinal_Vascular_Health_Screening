@@ -1,18 +1,4 @@
 services:
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: aura_pgadmin
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@gmail.com
-      PGADMIN_DEFAULT_PASSWORD: 123456
-    ports:
-      - "5050:80"
-    depends_on:
-      - postgres
-    volumes:
-      - pgadmin-data:/var/lib/pgadmin
-
   postgres:
     image: postgres:16
     container_name: aura_postgres
@@ -25,7 +11,70 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - aura_network
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: aura_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@gmail.com
+      PGADMIN_DEFAULT_PASSWORD: 123456
+    depends_on:
+      - postgres
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - aura_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aura_backend
+    restart: always
+    depends_on:
+      - postgres
+      - ai-core
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retinal_system
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: 123456
+    networks:
+      - aura_network
+
+  ai-core:
+    build:
+      context: ./ai-core
+      dockerfile: Dockerfile
+    container_name: aura_ai_core
+    restart: always
+    ports:
+      - "8000:8000"
+    networks:
+      - aura_network
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: aura_frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    networks:
+      - aura_network
 
 volumes:
   pgdata:
   pgadmin-data:
+
+networks:
+  aura_network:
+    driver: bridge
