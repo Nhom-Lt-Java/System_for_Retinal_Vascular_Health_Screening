@@ -1,7 +1,12 @@
 # AURA Retinal Screening - Technical Flow Diagrams
 
-## 1. Luồng: User upload ảnh & chạy AI
+Tài liệu này mô tả kiến trúc và luồng dữ liệu chính của hệ thống sàng lọc võng mạc AURA, tập trung vào giao tiếp giữa các thành phần Front-end (React), Back-end (Java/Spring), và AI Microservice (Python/ML Model).
 
+## 1. Luồng: User Upload Ảnh & Chạy AI
+
+Luồng này mô tả quy trình từ khi người dùng tải ảnh lên cho đến khi nhận được kết quả phân tích tự động từ AI.
+
+```text
 User
   |
   | (1) Chọn ảnh, nhấn Upload & Analyze
@@ -49,50 +54,4 @@ Repository → Database
   | (13) FE polling GET /api/analyses/{id}
   v
 Frontend hiển thị kết quả cho User
-
----
-
-## 2. Luồng: Doctor review
-
-Doctor
-  |
-  | (1) Mở danh sách phân tích
-  v
-Frontend (Doctor Portal)
-  |
-  | (2) GET /api/doctor/analyses?filters
-  v
-Backend Controller (Doctor)
-  |
-  | (3) doctorAnalysisService.getAnalyses()
-  v
-Service
-  |
-  | (4) analysisRepository.findByClinicOrDoctor(...)
-  v
-Repository → DB
-  |
-  | (5) Trả kết quả danh sách → FE
-  v
-Doctor chọn 1 analysis
-  |
-  | (6) GET /api/doctor/analyses/{id}
-  v
-Controller → Service → Repository → DB
-  |
-  | (7) Trả chi tiết analysis + kết quả AI
-  v
-Frontend
-  |
-  | (8) Doctor nhập chẩn đoán, note, confirm/override
-  | (9) POST /api/doctor/analyses/{id}/review
-  v
-Backend Controller
-  |
-  | (10) doctorAnalysisService.saveReview()
-  v
-Service → Repository → DB
-  |
-  | (11) Cập nhật trạng thái review
-  v
-User có thể xem doctor review qua FE
+```
