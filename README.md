@@ -50,6 +50,8 @@ Repository → Database
   v
 Frontend hiển thị kết quả cho User
 
+---
+
 ## 2. Luồng: Doctor review
 
 Doctor
