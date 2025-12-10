@@ -1,6 +1,8 @@
 # AURA Retinal Screening
 
-## 📸 Luồng 1: User Upload Ảnh và Phân tích AI (Đã sửa lỗi cú pháp)
+## 📸 Luồng 1: User Upload Ảnh và Phân tích AI
+
+Luồng này mô tả quá trình tự động phân tích ảnh võng mạc sử dụng kiến trúc phân tán (React Frontend, Java/Spring Backend, Python AI Microservice).
 
 ```mermaid
 sequenceDiagram
@@ -40,19 +42,17 @@ sequenceDiagram
         end
     end
 ```
-
 👨‍⚕️ Luồng 2: Doctor Review (Đánh giá của Bác sĩ)
  ```mermaid
 sequenceDiagram
+    sequenceDiagram
     participant D as Doctor
     participant FE as Frontend (Doctor Portal)
     participant BCD as Backend Controller (Doctor)
     participant SD as Service (DoctorAnalysisService)
     participant R as Repository
     participant DB as Database
-    participant BCC as Backend Controller
-    participant S as Service
-
+    
     D->>FE: (1) Mở danh sách phân tích
     FE->>BCD: (2) GET /api/doctor/analyses?filters
     BCD->>SD: (3) doctorAnalysisService.getAnalyses()
