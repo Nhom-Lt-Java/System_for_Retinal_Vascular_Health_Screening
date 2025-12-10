@@ -1,7 +1,5 @@
 # AURA Retinal Screening
 
-📸 Luồng 1: User Upload Ảnh và Phân tích AI
-
 ## 📸 Luồng 1: User Upload Ảnh và Phân tích AI (Đã sửa lỗi cú pháp)
 
 ```mermaid
