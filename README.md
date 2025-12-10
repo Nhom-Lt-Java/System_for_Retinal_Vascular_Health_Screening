@@ -55,3 +55,50 @@ Repository → Database
   v
 Frontend hiển thị kết quả cho User
 ```
+
+## 2. Luồng: Doctor Review (Đánh giá của Bác sĩ)
+Luồng này mô tả quá trình bác sĩ truy cập, xem xét chi tiết kết quả AI, và đưa ra chẩn đoán cuối cùng.
+```text
+Doctor
+  |
+  | (1) Mở danh sách phân tích
+  v
+Frontend (Doctor Portal)
+  |
+  | (2) GET /api/doctor/analyses?filters
+  v
+Backend Controller (Doctor)
+  |
+  | (3) doctorAnalysisService.getAnalyses()
+  v
+Service
+  |
+  | (4) analysisRepository.findByClinicOrDoctor(...)
+  v
+Repository → DB
+  |
+  | (5) Trả kết quả danh sách → FE
+  v
+Doctor chọn 1 analysis
+  |
+  | (6) GET /api/doctor/analyses/{id}
+  v
+Controller → Service → Repository → DB
+  |
+  | (7) Trả chi tiết analysis + kết quả AI
+  v
+Frontend
+  |
+  | (8) Doctor nhập chẩn đoán, note, confirm/override
+  | (9) POST /api/doctor/analyses/{id}/review
+  v
+Backend Controller
+  |
+  | (10) doctorAnalysisService.saveReview()
+  v
+Service → Repository → DB
+  |
+  | (11) Cập nhật trạng thái review
+  v
+User có thể xem doctor review qua FE
+```
