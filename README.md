@@ -2,6 +2,8 @@
 
 📸 Luồng 1: User Upload Ảnh và Phân tích AI
 
+## 📸 Luồng 1: User Upload Ảnh và Phân tích AI (Đã sửa lỗi cú pháp)
+
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -25,6 +27,7 @@ sequenceDiagram
     BC->>S: (11) updateWithAIResult(...)
     S->>R: (12) repository.update(analysis COMPLETED + store result)
     R->>DB: Cập nhật trạng thái và kết quả
+
     loop FE polling
         FE->>BC: (13) GET /api/analyses/{id} (Kiểm tra trạng thái)
         BC->>DB: Trả về trạng thái
@@ -34,6 +37,7 @@ sequenceDiagram
             FE->>U: Hiển thị kết quả
             break
         else status = PENDING
+            DB->>BC: Trả về trạng thái chờ
             BC->>FE: Trả về trạng thái chờ
         end
     end
