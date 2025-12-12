@@ -1,6 +1,16 @@
 from fastapi import FastAPI
-from api.router_analysis import router as analysis_router
 
 app = FastAPI(title="AURA AI Core")
 
-app.include_router(analysis_router, prefix="/api")
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "ai-core"}
+
+@app.post("/analyze")
+def analyze():
+    # mock tạm để backend gọi test flow upload -> analyze -> result
+    return {
+        "risk_level": "low",
+        "scores": {"diabetic": 0.12, "hypertension": 0.18, "stroke": 0.05},
+        "message": "Mock response (no model yet)"
+    }
