@@ -1,0 +1,12 @@
+seed: 42
+data_root: data
+datasets: ["DRIVE", "CHASE_DB1"]
+image_size: 512
+batch_size: 4
+epochs: 20
+lr: 0.0003
+num_workers: 2
+output_dir: artifacts/models
+model:
+  encoder: resnet34
+  encoder_weights: imagenet
