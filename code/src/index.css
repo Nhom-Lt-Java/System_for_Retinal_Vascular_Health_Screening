@@ -1,0 +1,22 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS tùy chỉnh cho Checkbox Ant Design trên nền tối */
+.login-checkbox .ant-checkbox-inner {
+    background-color: transparent;
+    border-color: rgba(255, 255, 255, 0.6);
+}
+.login-checkbox .ant-checkbox-checked .ant-checkbox-inner {
+    background-color: white !important;
+    border-color: white !important;
+}
+.login-checkbox .ant-checkbox-checked .ant-checkbox-inner::after {
+    border-color: #4f46e5 !important; /* Màu tím dấu tích */
+}
+.login-checkbox:hover .ant-checkbox-inner {
+    border-color: white !important;
+}
+.login-checkbox span {
+    color: white; /* Màu chữ Remember me */
+}
