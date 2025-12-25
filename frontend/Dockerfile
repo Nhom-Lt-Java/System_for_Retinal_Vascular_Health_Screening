@@ -1,20 +1,20 @@
-# Frontend (React)
-FROM node:16
+# 1. Sử dụng Node.js để chạy
+FROM node:18-alpine
 
+# 2. Tạo thư mục làm việc bên trong Docker
 WORKDIR /app
 
-# Copy package config
-COPY package.json package-lock.json ./
+# 3. Copy file danh sách thư viện (package.json) vào trước
+COPY package*.json ./
 
+# 4. Cài đặt các thư viện
 RUN npm install
 
-# Copy toàn bộ source còn lại
+# 5. Copy toàn bộ code còn lại vào
 COPY . .
 
-# Build app
-RUN npm run build
+# 6. Mở cổng 5173 (Cổng mặc định của Vite)
+EXPOSE 5173
 
-EXPOSE 3000
-
-# Dùng serve để serve static build
-CMD ["npx", "serve", "build"]
+# 7. Chạy lệnh khởi động (giống như bạn gõ npm run dev)
+CMD ["npm", "run", "dev", "--", "--host"]
