@@ -1,3 +1,4 @@
+
 # AURA Retinal Screening - Technical Flow Diagrams
 
 Tài liệu này mô tả kiến trúc và luồng dữ liệu chính của hệ thống sàng lọc võng mạc AURA, tập trung vào giao tiếp giữa các thành phần Front-end (React), Back-end (Java/Spring), và AI Microservice (Python/ML Model).

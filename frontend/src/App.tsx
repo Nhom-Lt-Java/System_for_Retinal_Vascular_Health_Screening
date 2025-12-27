@@ -1,28 +1,57 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import LoginOptions from './pages/auth/LoginOptions';
-import LoginPage from './pages/auth/LoginPage';
-import RegisterPage from './pages/auth/RegisterPage';
-import Dashboard from './pages/Dashboard'; // <--- QUAN TRỌNG: Import file Dashboard mới
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
+import Navbar from './components/Navbar';
 
-function App() {
+// Auth Pages
+import Login from './pages/auth/Login';
+import Register from './pages/auth/Register';
+import ForgotPassword from './pages/auth/ForgotPassword';
+
+// User Pages
+import Upload from './pages/user/Upload';
+import Result from './pages/user/Result';
+import History from './pages/user/History';
+import Profile from './pages/user/Profile';
+import Chat from './pages/user/Chat';
+
+// Doctor Pages
+import Dashboard from './pages/doctor/Dashboard';
+import PatientList from './pages/doctor/PatientList';
+
+export default function App() {
+  const { token, user, loading } = useAuth();
+
+  if (loading) return null; // Chờ kiểm tra trạng thái đăng nhập
+
   return (
-    <Router>
+    <>
+      <Navbar />
       <Routes>
-        {/* Trang chọn vai trò (Trang chủ) */}
-        <Route path="/" element={<LoginOptions />} />
-        
-        {/* Các trang đăng nhập/đăng ký */}
-        <Route path="/login/:role" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        
-        {/* Trang Dashboard chính */}
-        <Route path="/dashboard" element={<Dashboard />} />
-        
-        {/* Nếu đường dẫn sai thì tự về trang chủ */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Public Routes */}
+        <Route path="/login" element={!token ? <Login /> : <Navigate to="/" />} />
+        <Route path="/register" element={!token ? <Register /> : <Navigate to="/" />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+
+        {/* Protected Routes - Yêu cầu Token */}
+        <Route path="/" element={
+          token ? (user?.role === 'doctor' ? <Navigate to="/doctor" /> : <Navigate to="/upload" />) : <Navigate to="/login" />
+        } />
+
+        {/* Routes dành cho Bệnh nhân (User) */}
+        <Route path="/upload" element={token ? <Upload /> : <Navigate to="/login" />} />
+        <Route path="/result" element={token ? <Result /> : <Navigate to="/login" />} />
+        <Route path="/history" element={token ? <History /> : <Navigate to="/login" />} />
+        <Route path="/chat" element={token ? <Chat /> : <Navigate to="/login" />} />
+        <Route path="/profile" element={token ? <Profile /> : <Navigate to="/login" />} />
+
+        {/* Routes dành cho Bác sĩ (Doctor) */}
+        <Route path="/doctor" element={token && user?.role === 'doctor' ? <Dashboard /> : <Navigate to="/login" />} />
+        <Route path="/doctor/patients" element={token && user?.role === 'doctor' ? <PatientList /> : <Navigate to="/login" />} />
+
+        {/* Redirect lỗi 404 */}
+        <Route path="*" element={<Navigate to="/" />} />
       </Routes>
-    </Router>
+    </>
   );
 }
-
-export default App;

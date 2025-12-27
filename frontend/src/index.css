@@ -1,28 +1,5 @@
-/* 1. Gọi Tailwind về (BẮT BUỘC PHẢI CÓ 3 DÒNG NÀY) */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* 2. Cấu hình nền đẹp */
-@layer base {
-  body {
-    /* Màu nền xanh đậm hiện đại */
-    background: radial-gradient(circle at top left, #1e3a8a, #0f172a); 
-    background-attachment: fixed;
-    color: #fff;
-    font-family: 'Inter', sans-serif;
-    min-height: 100vh;
-  }
-}
-
-/* 3. Tùy chỉnh thanh cuộn */
-::-webkit-scrollbar {
-  width: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #0f172a;
-}
-::-webkit-scrollbar-thumb {
-  background: #3b82f6;
-  border-radius: 4px;
-}
+body { margin: 0; font-family: sans-serif; }
