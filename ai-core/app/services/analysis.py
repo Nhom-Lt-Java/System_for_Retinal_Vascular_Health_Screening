@@ -1,73 +1,116 @@
 import os
 import uuid
+from typing import List, Dict
+
 import cv2
 import numpy as np
+from PIL import Image
 
-from app.schemas import AnalyzeResponse, Quality, Artifacts, Finding
+from app.utils.schemas import AnalyzeResponse
+from app.services.predict import predict_image
 from app.utils.image_io import bytes_to_rgb
-from app.services.quality import quality_check
-from app.services.vessel_stub import simple_vessel_mask_stub
-from app.features.biomarkers import compute_biomarkers
 
 AI_VERSION = "0.1.0"
 
-def _save_png(path: str, rgb: np.ndarray) -> None:
+
+def _save_png_rgb(path: str, rgb: np.ndarray) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
     cv2.imwrite(path, bgr)
 
-def analyze_image_bytes(image_bytes: bytes, filename: str, eye: str, patient_id: str) -> AnalyzeResponse:
+
+def _save_png_gray(path: str, gray_u8: np.ndarray) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    cv2.imwrite(path, gray_u8)
+
+
+def _advice_for(label: str, conf: float) -> List[str]:
+    key = (label or "").upper()
+
+    base = [
+        "Kết quả AI chỉ mang tính hỗ trợ, không thay thế chẩn đoán của bác sĩ.",
+        "Nếu có triệu chứng (mờ mắt, ruồi bay, đau nhức), nên khám chuyên khoa mắt sớm.",
+    ]
+
+    advice_map: Dict[str, List[str]] = {
+        "NORMAL": [
+            "Duy trì kiểm tra mắt định kỳ (6–12 tháng/lần).",
+            "Kiểm soát huyết áp/đường huyết nếu có bệnh nền.",
+        ],
+        "DR": [
+            "Gợi ý bệnh võng mạc đái tháo đường: ưu tiên khám chuyên khoa võng mạc.",
+            "Kiểm soát đường huyết (HbA1c), huyết áp, mỡ máu.",
+            "Nếu nhìn mờ/tối vùng trung tâm: đi khám sớm.",
+        ],
+        "AMD": [
+            "Gợi ý thoái hoá hoàng điểm: nên khám chuyên khoa đáy mắt/hoàng điểm.",
+            "Theo dõi thị lực trung tâm, biến dạng đường thẳng (Amsler grid).",
+        ],
+        "GLAUCOMA": [
+            "Gợi ý glaucoma: nên đo nhãn áp, soi gai thị/đánh giá thị trường.",
+            "Nếu đau nhức mắt, nhìn quầng sáng: đi khám cấp cứu.",
+        ],
+    }
+
+    extra: List[str] = []
+    for k in advice_map:
+        if k in key:
+            extra = advice_map[k]
+            break
+    if not extra:
+        extra = ["Nên khám chuyên khoa mắt để xác nhận kết quả."]
+
+    if conf < 0.6:
+        extra = ["Độ tin cậy AI chưa cao, nên coi đây là gợi ý ban đầu."] + extra
+
+    return base + extra
+
+
+def analyze_image_bytes(image_bytes: bytes, filename: str, eye: str, patient_id: str, vessel_thr: float | None = None) -> AnalyzeResponse:
     request_id = str(uuid.uuid4())
+
     rgb = bytes_to_rgb(image_bytes)
+    pil = Image.fromarray(rgb)
 
-    blur_score, brightness, passed, notes = quality_check(rgb)
+    if vessel_thr is None:
+        vessel_thr = float(os.getenv("VESSEL_THR", "0.78"))
 
-    if not passed:
-        return AnalyzeResponse(
-            request_id=request_id,
-            risk_level="QUALITY_LOW",
-            risk_score=0.0,
-            findings=[Finding(name="QUALITY_LOW", confidence=1.0)],
-            biomarkers={},
-            quality=Quality(blur_score=blur_score, brightness=brightness, passed=False, notes=notes),
-            artifacts=Artifacts(),
-            ai_version=AI_VERSION,
-            thresholds={"blur_min": 50.0, "brightness_min": 30.0, "brightness_max": 220.0},
-        )
+    out = predict_image(pil, filename=filename, vessel_thr=vessel_thr)
 
-    # Vessel mask (stub for now)
-    mask = simple_vessel_mask_stub(rgb)  # HxW {0,1}
-    biomarkers = compute_biomarkers(mask)
+    label = out["pred_label"]
+    conf = float(out["pred_conf"])
+    probs = out["probs"]
 
-    # Rule-based risk baseline (placeholder)
-    density = biomarkers.get("vessel_density", 0.0)
-    risk_score = float(np.clip((density - 0.03) / 0.05, 0.0, 1.0))
-    risk_level = "LOW" if risk_score < 0.33 else ("MED" if risk_score < 0.66 else "HIGH")
+    vessel_mask_u8 = out["vessel_mask_u8"]
+    vessel_overlay_rgb = out["vessel_overlay_rgb"]
+    heat_overlay_rgb = out["heat_overlay_rgb"]
 
-    # Artifacts
-    mask_vis = (mask * 255).astype(np.uint8)
-    mask_rgb = np.stack([mask_vis] * 3, axis=-1)
-
-    overlay = rgb.copy()
-    overlay[mask.astype(bool)] = [0, 255, 0]
-    annotated = (0.6 * rgb + 0.4 * overlay).astype(np.uint8)
-
+    # save artifacts
     mask_path = f"artifacts/{request_id}_vessel_mask.png"
-    annotated_path = f"artifacts/{request_id}_annotated.png"
-    _save_png(mask_path, mask_rgb)
-    _save_png(annotated_path, annotated)
+    overlay_path = f"artifacts/{request_id}_overlay.png"
+    heat_path = f"artifacts/{request_id}_heat.png"
+
+    _save_png_gray(mask_path, vessel_mask_u8)
+    _save_png_rgb(overlay_path, vessel_overlay_rgb)
+    _save_png_rgb(heat_path, heat_overlay_rgb)
+
+    advice = _advice_for(label, conf)
 
     return AnalyzeResponse(
         request_id=request_id,
-        risk_level=risk_level,
-        risk_score=risk_score,
-        findings=[Finding(name="VASCULAR_RISK_ESTIMATE", confidence=min(1.0, 0.5 + risk_score / 2))],
-        biomarkers=biomarkers,
-        quality=Quality(blur_score=blur_score, brightness=brightness, passed=True, notes=[]),
-        artifacts=Artifacts(
-            vessel_mask_url=f"/artifacts/{request_id}_vessel_mask.png",
-            annotated_url=f"/artifacts/{request_id}_annotated.png",
-        ),
+        filename=filename,
+        eye=eye,
+        patient_id=patient_id,
+
+        prediction_label=label,
+        prediction_score=conf,
+        probs=probs,
+        advice=advice,
+
+        segmentation_url=f"/artifacts/{request_id}_vessel_mask.png",
+        overlay_url=f"/artifacts/{request_id}_overlay.png",
+        heatmap_url=f"/artifacts/{request_id}_heat.png",
+
         ai_version=AI_VERSION,
-        thresholds={"density_low": 0.33, "density_med": 0.66},
+        thresholds={"vessel_thr": vessel_thr},
     )
