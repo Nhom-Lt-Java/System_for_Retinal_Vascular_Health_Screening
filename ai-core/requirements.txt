@@ -8,3 +8,4 @@ pyyaml
 torch
 segmentation-models-pytorch
 timm
+minio

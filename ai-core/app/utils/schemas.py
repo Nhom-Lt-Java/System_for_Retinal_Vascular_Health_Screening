@@ -20,15 +20,20 @@ class AnalyzeResponse(BaseModel):
     ai_version: str = "0.1.0"
     thresholds: Dict[str, float] = Field(default_factory=dict)
 
-class AiPredictArtifacts(BaseModel):
-    overlay_png_b64: str
-    mask_png_b64: str
-    heatmap_png_b64: str
-    heatmap_overlay_png_b64: str
+
+class AiArtifactsKeys(BaseModel):
+    overlay_key: str
+    mask_key: str
+    heatmap_key: str
+    heatmap_overlay_key: str
+    overlay_size: int
+    mask_size: int
+    heatmap_size: int
+    heatmap_overlay_size: int
 
 class AiPredictResponse(BaseModel):
     pred_label: str
     pred_conf: float
     probs: Dict[str, float]
     vessel_threshold: float
-    artifacts: AiPredictArtifacts
+    artifacts: AiArtifactsKeys

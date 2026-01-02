@@ -1,5 +1,5 @@
 import os
-import base64
+import io
 from typing import Optional, Dict, Any
 
 import numpy as np
@@ -8,6 +8,8 @@ import torch
 import yaml
 from PIL import Image
 from torchvision import transforms
+
+from minio import Minio
 
 from ml.models.disease_classifier import build_disease_classifier
 from ml.models.attention_r2unet import AttentionR2UNet
@@ -39,6 +41,25 @@ HEAT_ALPHA = float(os.getenv("HEAT_ALPHA", "0.45"))
 OUT_DIR = os.getenv("OUT_DIR", "artifacts/api_outputs")
 os.makedirs(OUT_DIR, exist_ok=True)
 
+# =========================
+# MinIO (upload artifacts)
+# =========================
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "aura")
+MINIO_PREFIX = os.getenv("MINIO_PREFIX", "analyses")
+
+_secure = MINIO_ENDPOINT.startswith("https://")
+_endpoint = MINIO_ENDPOINT.replace("http://", "").replace("https://", "")
+
+minio_client = Minio(
+    _endpoint,
+    access_key=MINIO_ACCESS_KEY,
+    secret_key=MINIO_SECRET_KEY,
+    secure=_secure,
+)
+
 
 # =========================
 # Helpers
@@ -51,6 +72,7 @@ def _strip_module_prefix(sd: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]
         else:
             out[k] = v
     return out
+
 
 def _load_ckpt_any(path: str) -> Any:
     return torch.load(path, map_location="cpu")
@@ -65,21 +87,40 @@ def _extract_state_dict(obj: Any) -> Dict[str, torch.Tensor]:
     raise RuntimeError(f"Checkpoint format không hợp lệ: {type(obj)}")
 
 
-def _b64_png_from_rgb(rgb: np.ndarray) -> str:
-    """rgb uint8 HWC -> base64 png"""
+def _png_bytes_from_rgb(rgb: np.ndarray) -> bytes:
+    """rgb uint8 HWC -> png bytes"""
     bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
     ok, buf = cv2.imencode(".png", bgr)
-    if not ok:
-        return ""
-    return base64.b64encode(buf.tobytes()).decode("utf-8")
+    return buf.tobytes() if ok else b""
 
 
-def _b64_png_from_gray(gray: np.ndarray) -> str:
-    """gray uint8 HW -> base64 png"""
+def _png_bytes_from_gray(gray: np.ndarray) -> bytes:
+    """gray uint8 HW -> png bytes"""
     ok, buf = cv2.imencode(".png", gray)
-    if not ok:
-        return ""
-    return base64.b64encode(buf.tobytes()).decode("utf-8")
+    return buf.tobytes() if ok else b""
+
+
+def _ensure_bucket_exists() -> None:
+    # an toàn khi chạy nhiều lần
+    try:
+        if not minio_client.bucket_exists(MINIO_BUCKET):
+            minio_client.make_bucket(MINIO_BUCKET)
+    except Exception:
+        # nếu đã có bucket/không đủ quyền thì bỏ qua; minio-init thường đã tạo sẵn
+        pass
+
+
+def _put_png(object_key: str, data: bytes) -> int:
+    """upload png bytes -> MinIO, return size bytes"""
+    _ensure_bucket_exists()
+    minio_client.put_object(
+        MINIO_BUCKET,
+        object_key,
+        io.BytesIO(data),
+        length=len(data),
+        content_type="image/png",
+    )
+    return len(data)
 
 
 def _overlay_vessels_green(rgb: np.ndarray, mask: np.ndarray, alpha: float) -> np.ndarray:
@@ -96,7 +137,7 @@ def _overlay_vessels_green(rgb: np.ndarray, mask: np.ndarray, alpha: float) -> n
     return out
 
 
-def _apply_heatmap(rgb: np.ndarray, heatmap01: np.ndarray, alpha: float) -> (np.ndarray, np.ndarray): # type: ignore
+def _apply_heatmap(rgb: np.ndarray, heatmap01: np.ndarray, alpha: float) -> tuple[np.ndarray, np.ndarray]:
     """
     heatmap01: float32 HW in [0..1]
     returns: (heat_overlay_rgb, heat_rgb)
@@ -217,10 +258,9 @@ def _looks_like_smp(keys) -> bool:
 
 def _infer_r2att_base_from_state(sd: Dict[str, torch.Tensor]) -> int:
     """
-    Your mismatches show:
-      checkpoint deep channels = 512 => base=32 (512 = 32*16)
-      checkpoint deep channels = 1024 => base=64 (1024 = 64*16)
-    We'll infer from a deep layer weight if available.
+    Infer base from deep channels:
+      deep=512  -> base=32
+      deep=1024 -> base=64
     """
     candidate_keys = [
         "RRCNN5.conv_1x1.weight",
@@ -234,18 +274,15 @@ def _infer_r2att_base_from_state(sd: Dict[str, torch.Tensor]) -> int:
             break
 
     if deep is None:
-        # fallback: try find any RRCNN*.conv_1x1.weight with largest out_channels
         for k, v in sd.items():
             if k.endswith("conv_1x1.weight") and k.startswith("RRCNN") and hasattr(v, "shape"):
                 oc = int(v.shape[0])
                 deep = oc if deep is None else max(deep, oc)
 
     if deep is None:
-        return 32  # safest common
+        return 32
 
     base = max(1, deep // 16)
-
-    # snap to common values to avoid weird results
     common = [16, 32, 64, 128]
     base = min(common, key=lambda x: abs(x - base))
     return base
@@ -253,7 +290,6 @@ def _infer_r2att_base_from_state(sd: Dict[str, torch.Tensor]) -> int:
 
 def load_vessel_model():
     in_ch, classes = 3, 1
-    # read yaml if exists (optional)
     try:
         with open(VESSEL_CFG, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
@@ -270,7 +306,6 @@ def load_vessel_model():
 
     if _looks_like_r2att(keys):
         base = _infer_r2att_base_from_state(v_sd)
-        # ✅ THIS FIXES YOUR CURRENT ERROR (512 -> base=32, 1024 -> base=64)
         model = AttentionR2UNet(in_channels=in_ch, out_channels=classes, base=base, t=2)
         model.load_state_dict(v_sd, strict=True)
         return model.to(DEVICE).eval()
@@ -297,7 +332,12 @@ VESSEL_MODEL = load_vessel_model()
 # =========================
 # Main predict
 # =========================
-def predict_image(pil_img: Image.Image, filename: str = "image.png", vessel_thr: Optional[float] = None) -> Dict[str, Any]:
+def predict_image(
+    pil_img: Image.Image,
+    filename: str = "image.png",
+    vessel_thr: Optional[float] = None,
+    analysis_id: Optional[str] = None,
+) -> Dict[str, Any]:
     thr = float(vessel_thr) if vessel_thr is not None else VESSEL_THR
 
     pil_img = pil_img.convert("RGB")
@@ -325,7 +365,6 @@ def predict_image(pil_img: Image.Image, filename: str = "image.png", vessel_thr:
 
     with torch.no_grad():
         v_logits = VESSEL_MODEL(x_v)
-        # assume output shape (B,1,H,W) or (B,C,H,W)
         if v_logits.dim() == 4:
             v_map = v_logits[0, 0]
         else:
@@ -347,7 +386,27 @@ def predict_image(pil_img: Image.Image, filename: str = "image.png", vessel_thr:
     cv2.imwrite(out_heat, cv2.cvtColor(heat_rgb, cv2.COLOR_RGB2BGR))
     cv2.imwrite(out_heat_overlay, cv2.cvtColor(heat_overlay, cv2.COLOR_RGB2BGR))
 
-    # ---------- return JSON ----------
+    # ---------- upload artifacts to MinIO ----------
+    if not analysis_id:
+        analysis_id = base  # fallback nếu backend không truyền
+
+    prefix = f"{MINIO_PREFIX}/{analysis_id}"
+    overlay_key = f"{prefix}/overlay.png"
+    mask_key = f"{prefix}/mask.png"
+    heatmap_key = f"{prefix}/heatmap.png"
+    heatmap_overlay_key = f"{prefix}/heatmap_overlay.png"
+
+    overlay_bytes = _png_bytes_from_rgb(overlay)
+    mask_bytes = _png_bytes_from_gray(v_mask)
+    heat_bytes = _png_bytes_from_rgb(heat_rgb)
+    heat_overlay_bytes = _png_bytes_from_rgb(heat_overlay)
+
+    overlay_size = _put_png(overlay_key, overlay_bytes)
+    mask_size = _put_png(mask_key, mask_bytes)
+    heatmap_size = _put_png(heatmap_key, heat_bytes)
+    heatmap_overlay_size = _put_png(heatmap_overlay_key, heat_overlay_bytes)
+
+    # ---------- return JSON (small) ----------
     return {
         "pred_label": pred_label,
         "pred_conf": pred_conf,
@@ -360,9 +419,13 @@ def predict_image(pil_img: Image.Image, filename: str = "image.png", vessel_thr:
             "heatmap_overlay_path": out_heat_overlay,
         },
         "artifacts": {
-            "overlay_png_b64": _b64_png_from_rgb(overlay),
-            "mask_png_b64": _b64_png_from_gray(v_mask),
-            "heatmap_png_b64": _b64_png_from_rgb(heat_rgb),
-            "heatmap_overlay_png_b64": _b64_png_from_rgb(heat_overlay),
+            "overlay_key": overlay_key,
+            "mask_key": mask_key,
+            "heatmap_key": heatmap_key,
+            "heatmap_overlay_key": heatmap_overlay_key,
+            "overlay_size": overlay_size,
+            "mask_size": mask_size,
+            "heatmap_size": heatmap_size,
+            "heatmap_overlay_size": heatmap_overlay_size,
         },
     }
