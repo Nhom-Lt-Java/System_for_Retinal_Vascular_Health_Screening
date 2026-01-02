@@ -1,8 +1,6 @@
 from fastapi import APIRouter, UploadFile, File, Form
-from PIL import Image
-from app.utils.image_io import bytes_to_rgb
-from app.services.predict import predict_image
-from app.utils.schemas import AiPredictResponse
+from app.schemas import AnalyzeResponse
+from app.services.analysis import analyze_image_bytes
 
 router = APIRouter()
 
@@ -14,13 +12,11 @@ def health():
 def version():
     return {"ai_version": "0.1.0"}
 
-@router.post("/api/predict", response_model=AiPredictResponse)
-async def predict(
+@router.post("/analyze", response_model=AnalyzeResponse)
+async def analyze(
     file: UploadFile = File(...),
-    vessel_thr: float = Form(default=0.78),
-    analysis_id: str = Form(default=""),   # backend gửi qua
+    eye: str = Form(default="UNKNOWN"),
+    patient_id: str = Form(default="UNKNOWN"),
 ):
     content = await file.read()
-    rgb = bytes_to_rgb(content)
-    pil = Image.fromarray(rgb)
-    return predict_image(pil, filename=file.filename or "upload.jpg", vessel_thr=vessel_thr, analysis_id=analysis_id)
+    return analyze_image_bytes(content, filename=file.filename, eye=eye, patient_id=patient_id)
