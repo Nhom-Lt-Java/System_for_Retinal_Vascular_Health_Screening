@@ -13,6 +13,11 @@ services:
       - pgdata:/var/lib/postgresql/data
     networks:
       - aura_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d retinal_system"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   pgadmin:
     image: dpage/pgadmin4
@@ -22,7 +27,8 @@ services:
       PGADMIN_DEFAULT_EMAIL: admin@gmail.com
       PGADMIN_DEFAULT_PASSWORD: 123456
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "5050:80"
     volumes:
@@ -30,23 +36,39 @@ services:
     networks:
       - aura_network
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: aura_backend
+  minio:
+    image: minio/minio:latest
+    container_name: aura_minio
+    command: server /data --console-address ":9001"
     restart: always
-    depends_on:
-      - postgres
-      - ai-core
-    ports:
-      - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retinal_system
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: 123456
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
     networks:
       - aura_network
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: aura_minio_init
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin123 2>/dev/null; do
+        echo 'waiting minio...'; sleep 2;
+      done;
+      mc mb -p local/aura || true;
+      mc anonymous set download local/aura || true;
+      exit 0;
+      "
+    networks:
+      - aura_network
+    restart: "no"
 
   ai-core:
     build:
@@ -58,6 +80,48 @@ services:
       - "8000:8000"
     networks:
       - aura_network
+    # volumes:
+    #   - ./ai-core/artifacts:/app/artifacts
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aura_backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      ai-core:
+        condition: service_started
+      minio:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retinal_system
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: 123456
+
+      AI_BASE_URL: http://ai-core:8000
+
+      # internal (container->container)
+      MINIO_ENDPOINT: http://minio:9000
+
+      # public (browser sẽ gọi URL này)
+      MINIO_PUBLIC_ENDPOINT: http://localhost:9000
+
+      # important: presign offline (avoid auto region/location lookup)
+      MINIO_REGION: us-east-1
+
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: aura
+      MINIO_PRESIGN_EXPIRY_SECONDS: 600
+    networks:
+      - aura_network
 
   frontend:
     build:
@@ -65,15 +129,22 @@ services:
     container_name: aura_frontend
     restart: always
     depends_on:
-      - backend
+      backend:
+        condition: service_started
     ports:
-      - "3000:3000"
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8080
     networks:
       - aura_network
 
 volumes:
   pgdata:
+    name: aura_pgdata
   pgadmin-data:
+    name: aura_pgadmin_data
+  minio-data:
+    name: aura_minio_data
 
 networks:
   aura_network:
