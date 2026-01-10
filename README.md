@@ -20,7 +20,7 @@ cd AURA
 docker compose up -d --build
 
 ---
-
+```text
 docker exec -it aura_postgres psql -U postgres -d retinal_system -v ON_ERROR_STOP=1 -c "
 WITH existing AS (
   SELECT id FROM clinics WHERE name='Demo Clinic' ORDER BY id LIMIT 1
@@ -44,8 +44,5 @@ CROSS JOIN (VALUES
   ('user1','123456','USER')
 ) AS u(username,password,role)
 ON CONFLICT (username) DO NOTHING;
-"
-
----
-
+```
 
