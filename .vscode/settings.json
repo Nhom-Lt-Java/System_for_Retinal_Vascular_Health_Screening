@@ -1,5 +1,6 @@
 {
     "python.analysis.extraPaths": [
         "./ai-core"
-    ]
+    ],
+    "java.configuration.updateBuildConfiguration": "interactive"
 }
