@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+numpy
+pillow
+opencv-python-headless
+pyyaml
+torch
+segmentation-models-pytorch
+timm
+minio

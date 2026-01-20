@@ -1,0 +1,54 @@
+seed: 42
+data_root: data
+datasets: ["DRIVE/train"]
+
+image_size: 512
+batch_size: 2
+epochs: 200
+lr: 0.0001
+
+bce_pos_weight: 12
+use_dice_loss: true
+
+debug_save: true
+debug_every: 1
+num_workers: 4
+
+output_dir: artifacts/models
+
+model:
+  name: attention_r2unet
+  in_channels: 3
+  classes: 1
+  base: 32
+  t: 2
+
+# --- thresholds ---
+# dùng để theo dõi trong train/val
+eval_threshold: 0.20
+
+# dùng để xuất mask cho dự án (theo threshold sweep của bạn)
+deploy_threshold: 0.50
+
+# debug ảnh pred nên theo deploy để nhìn đúng output sẽ dùng thật
+debug_threshold: 0.50
+
+# log best threshold để theo dõi / save best ổn định
+log_best_threshold: true
+eval_thresholds: [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+save_by: deploy
+
+# --- loss weights ---
+loss_bce_weight: 0.2
+loss_dice_weight: 0.8
+
+# --- stability (batch nhỏ) ---
+freeze_bn: true
+
+augment:
+  ssr_p: 0.15
+  rotate_limit: 5
+  scale_limit: 0.03
+  shift_limit: 0.01
+  hflip_p: 0.5
+  brightness_contrast_p: 0.3
