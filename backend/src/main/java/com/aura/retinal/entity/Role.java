@@ -1,8 +1,9 @@
 package com.aura.retinal.entity;
 
 public enum Role {
+    USER,
     ADMIN,
-    CLINIC,
     DOCTOR,
-    USER
+    SUPER_ADMIN,
+    CLINIC_ADMIN
 }
