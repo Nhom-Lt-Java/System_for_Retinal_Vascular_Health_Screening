@@ -4,7 +4,7 @@ export interface User {
   id: number;
   email: string;
   name?: string;
-  role: 'USER' | 'DOCTOR' | 'CLINIC_ADMIN' | 'SUPER_ADMIN'; // Cập nhật role
+  role: 'USER' | 'DOCTOR' | 'CLINIC_ADMIN' | 'SUPER_ADMIN';
   clinicId?: number;
 }
 
@@ -23,5 +23,6 @@ export interface MedicalRecord {
   diagnosis?: string;
   riskLevel?: 'LOW' | 'MEDIUM' | 'HIGH';
   createdAt: string;
-  status: 'PENDING' | 'COMPLETED';
+  // 👇 ĐÃ SỬA: Thêm 'REVIEWED' vào đây để Dashboard không báo lỗi nữa
+  status: 'PENDING' | 'COMPLETED' | 'REVIEWED';
 }

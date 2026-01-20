@@ -1,77 +1,89 @@
-import React from 'react';
-import { AppBar, Toolbar, Typography, Button, Box, Container, Avatar, IconButton } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import LogoutIcon from '@mui/icons-material/Logout';
-import ChatIcon from '@mui/icons-material/Chat';
+import { User, LogOut, Activity } from 'lucide-react'; // Thêm icon nếu muốn đẹp hơn
 
-export default function Navbar() {
-  const { user, logout, token } = useAuth();
+const Navbar = () => {
   const navigate = useNavigate();
+  const { token, role, logout } = useAuth(); 
 
-  if (!token) return null;
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
   return (
-    <AppBar position="sticky" elevation={0} sx={{ bgcolor: 'white', borderBottom: '1px solid #eee' }}>
-      <Container maxWidth="xl">
-        <Toolbar sx={{ px: 0 }}>
-          <Typography 
-            variant="h5" 
-            sx={{ flexGrow: 1, fontWeight: 'bold', color: '#1976d2', cursor: 'pointer' }} 
-            onClick={() => navigate('/')}
-          >
-            AURA
-          </Typography>
-          
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-            
-            {/* MENU CHO USER */}
-            {(user?.role === 'user' || user?.role === 'patient' || !user?.role || user?.role === 'USER') && (
-              <>
-                <Button color="inherit" sx={{ color: '#555' }} onClick={() => navigate('/upload')}>Phân tích</Button>
-                <Button color="inherit" sx={{ color: '#555' }} onClick={() => navigate('/history')}>Lịch sử</Button>
-                <IconButton color="primary" onClick={() => navigate('/chat')}><ChatIcon /></IconButton>
-              </>
-            )}
+    <nav className="bg-blue-600 px-6 py-4 text-white shadow-lg sticky top-0 z-50">
+      <div className="container mx-auto flex justify-between items-center">
+        {/* Logo / Tên App */}
+        <div 
+          className="font-bold text-2xl cursor-pointer flex items-center gap-2" 
+          onClick={() => navigate("/")}
+        >
+          <Activity size={28} /> Aura Retinal AI
+        </div>
 
-            {/* MENU CHO BÁC SĨ */}
-            {(user?.role === 'doctor' || user?.role === 'DOCTOR') && (
-              <>
-                <Button color="inherit" sx={{ color: '#555' }} onClick={() => navigate('/doctor')}>Thống kê</Button>
-                <Button color="inherit" sx={{ color: '#555' }} onClick={() => navigate('/doctor/patients')}>Bệnh nhân</Button>
-              </>
-            )}
+        {/* Menu Items */}
+        <div className="flex gap-6 items-center text-sm font-medium">
+          {token ? (
+            <>
+              {/* --- MENU USER --- */}
+              {role === "USER" && (
+                <>
+                  <Link to="/user/dashboard" className="hover:text-blue-200 transition">Trang chủ</Link>
+                  <Link to="/user/upload" className="hover:text-blue-200 transition">Phân tích ảnh</Link>
+                </>
+              )}
 
-            {/* MENU CHO CLINIC ADMIN (MỚI) */}
-            {user?.role === 'CLINIC_ADMIN' && (
-              <>
-                <Button color="inherit" sx={{ color: '#555' }} onClick={() => navigate('/clinic')}>Tổng quan</Button>
-                <Button color="inherit" sx={{ color: '#555' }} onClick={() => navigate('/clinic/doctors')}>QL Bác sĩ</Button>
-                <Button color="inherit" sx={{ color: '#555' }} onClick={() => navigate('/clinic/bulk-upload')}>Upload Lô</Button>
-              </>
-            )}
+              {/* --- MENU DOCTOR --- */}
+              {role === "DOCTOR" && (
+                <>
+                  <Link to="/doctor/patients" className="hover:text-blue-200 transition">Danh sách Bệnh nhân</Link>
+                </>
+              )}
 
-            {/* MENU CHO GLOBAL ADMIN (MỚI) */}
-            {user?.role === 'SUPER_ADMIN' && (
-              <>
-                <Button color="inherit" sx={{ color: '#555' }} onClick={() => navigate('/admin')}>Hệ thống</Button>
-                <Button color="inherit" sx={{ color: '#555' }} onClick={() => navigate('/admin/ai-settings')}>AI Config</Button>
-              </>
-            )}
-            
-            {/* AVATAR & LOGOUT */}
-            <IconButton onClick={() => navigate('/profile')} sx={{ ml: 1 }}>
-              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
-                {user?.name?.charAt(0) || 'U'}
-              </Avatar>
-            </IconButton>
+              {/* --- MENU CLINIC --- */}
+              {role === "CLINIC_ADMIN" && (
+                <>
+                  <Link to="/clinic/dashboard" className="hover:text-blue-200 transition">Phòng khám</Link>
+                  <Link to="/clinic/doctors" className="hover:text-blue-200 transition">Quản lý Bác sĩ</Link>
+                </>
+              )}
 
-            <IconButton color="error" onClick={() => { logout(); navigate('/login'); }}>
-              <LogoutIcon />
-            </IconButton>
-          </Box>
-        </Toolbar>
-      </Container>
-    </AppBar>
+              {/* --- MENU ADMIN --- */}
+              {role === "SUPER_ADMIN" && (
+                <>
+                  <Link to="/admin/dashboard" className="hover:text-blue-200 transition">Quản trị</Link>
+                </>
+              )}
+
+              {/* Vách ngăn */}
+              <div className="h-6 w-px bg-blue-400 mx-2"></div>
+
+              {/* Hồ sơ cá nhân */}
+              <Link to="/profile" className="hover:text-blue-200 transition flex items-center gap-2">
+                <User size={18} /> Hồ sơ
+              </Link>
+              
+              {/* Nút đăng xuất */}
+              <button 
+                onClick={handleLogout} 
+                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold transition flex items-center gap-2 shadow-sm"
+              >
+                <LogOut size={16} /> Đăng xuất
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/login" className="hover:text-blue-200 transition">Đăng nhập</Link>
+              <Link to="/register" className="bg-white text-blue-600 px-4 py-2 rounded-lg hover:bg-gray-100 font-bold transition shadow-sm">
+                Đăng ký
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+    </nav>
   );
-}
+};
+
+export default Navbar;

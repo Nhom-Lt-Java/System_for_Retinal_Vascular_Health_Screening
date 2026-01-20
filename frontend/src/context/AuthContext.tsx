@@ -3,7 +3,8 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 interface AuthContextType {
   user: any;
   token: string | null;
-  login: (userData: any, token: string) => void;
+  role: string | null;
+  login: (userData: any, token: string, role: string) => void;
   logout: () => void;
   loading: boolean;
 }
@@ -12,37 +13,44 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<any>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('aura_token'));
+  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [role, setRole] = useState<string | null>(localStorage.getItem('role'));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('aura_user');
-    // Chỉ thiết lập user nếu CẢ token và user đều tồn tại trong máy
-    if (token && savedUser) {
+    const savedUser = localStorage.getItem('user');
+    const savedToken = localStorage.getItem('token');
+    const savedRole = localStorage.getItem('role');
+
+    if (savedToken && savedUser && savedRole) {
       setUser(JSON.parse(savedUser));
-    } else {
-      logout(); // Xóa sạch dữ liệu thừa nếu thiếu 1 trong 2
+      setToken(savedToken);
+      setRole(savedRole);
     }
     setLoading(false);
-  }, [token]);
+  }, []);
 
-  const login = (userData: any, userToken: string) => {
+  const login = (userData: any, userToken: string, userRole: string) => {
     setToken(userToken);
     setUser(userData);
-    localStorage.setItem('aura_token', userToken);
-    localStorage.setItem('aura_user', JSON.stringify(userData));
+    setRole(userRole);
+    localStorage.setItem('token', userToken);
+    localStorage.setItem('user', JSON.stringify(userData));
+    localStorage.setItem('role', userRole);
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem('aura_token');
-    localStorage.removeItem('aura_user');
+    setRole(null);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('role');
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
-      {children}
+    <AuthContext.Provider value={{ user, token, role, login, logout, loading }}>
+      {!loading && children} {/* Ngăn chặn render App khi đang tải dữ liệu xác thực */}
     </AuthContext.Provider>
   );
 };

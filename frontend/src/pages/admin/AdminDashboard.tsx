@@ -1,83 +1,63 @@
-import React from 'react';
-import { Container, Grid, Paper, Typography, Button, Table, TableBody, TableCell, TableHead, TableRow, Tabs, Tab, Box, Chip } from '@mui/material';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import CancelIcon from '@mui/icons-material/Cancel';
+// src/pages/admin/AdminDashboard.tsx
+import { BarChart3, Users, Image as ImageIcon, AlertCircle, CheckCircle } from 'lucide-react';
 
-function ClinicApprovalTable() {
-  const pending = [
-    { id: 101, name: 'Mắt Sài Gòn', address: 'Q1, TP.HCM', date: '05/01/2026' },
-    { id: 102, name: 'Nha khoa & Mắt Việt', address: 'Hà Nội', date: '04/01/2026' },
+const AdminDashboard = () => {
+  const stats = [
+    { label: "Tổng người dùng", value: "1,250", icon: <Users size={20} />, color: "bg-blue-500" },
+    { label: "Ảnh đã phân tích", value: "8,420", icon: <ImageIcon size={20} />, color: "bg-green-500" },
+    { label: "Nguy cơ cao", value: "124", icon: <AlertCircle size={20} />, color: "bg-red-500" },
   ];
 
   return (
-    <Table>
-      <TableHead sx={{ bgcolor: '#eee' }}>
-        <TableRow>
-           <TableCell>Tên Phòng Khám</TableCell>
-           <TableCell>Địa chỉ</TableCell>
-           <TableCell>Ngày đăng ký</TableCell>
-           <TableCell>Hành động</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {pending.map((c) => (
-          <TableRow key={c.id}>
-            <TableCell sx={{ fontWeight: 'bold' }}>{c.name}</TableCell>
-            <TableCell>{c.address}</TableCell>
-            <TableCell>{c.date}</TableCell>
-            <TableCell>
-              <Button startIcon={<CheckCircleIcon />} color="success" size="small" variant="contained" sx={{ mr: 1 }}>Duyệt</Button>
-              <Button startIcon={<CancelIcon />} color="error" size="small" variant="outlined">Từ chối</Button>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-export default function AdminDashboard() {
-  const [tab, setTab] = React.useState(0);
-
-  return (
-    <Container maxWidth="xl" sx={{ mt: 4 }}>
-      <Typography variant="h4" sx={{ mb: 4, fontWeight: 'bold', color: '#2c3e50' }}>Global Admin Dashboard</Typography>
+    <div className="p-6 space-y-8">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-gray-800">Global Admin Dashboard</h1>
+        <div className="flex items-center gap-2 bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-sm font-medium">
+          <BarChart3 size={16} />
+          <span>Thống kê thời gian thực (FR-36)</span>
+        </div>
+      </div>
       
-      {/* Thẻ thống kê hệ thống */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={3}>
-           <Paper sx={{ p: 3, bgcolor: '#1976d2', color: 'white' }}>
-             <Typography variant="subtitle1">Tổng Users</Typography>
-             <Typography variant="h3" fontWeight="bold">5,400</Typography>
-           </Paper>
-        </Grid>
-        <Grid item xs={12} md={3}>
-           <Paper sx={{ p: 3, bgcolor: '#388e3c', color: 'white' }}>
-             <Typography variant="subtitle1">Phòng khám Active</Typography>
-             <Typography variant="h3" fontWeight="bold">45</Typography>
-           </Paper>
-        </Grid>
-        <Grid item xs={12} md={3}>
-           <Paper sx={{ p: 3, bgcolor: '#fbc02d', color: 'white' }}>
-             <Typography variant="subtitle1">Chờ duyệt</Typography>
-             <Typography variant="h3" fontWeight="bold">2</Typography>
-           </Paper>
-        </Grid>
-      </Grid>
+      {/* Khối Thống kê nhanh FR-36 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {stats.map((s, idx) => (
+          <div key={idx} className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex items-center gap-4 transition-transform hover:scale-[1.02]">
+            <div className={`${s.color} p-3 rounded-lg text-white shadow-lg`}>
+              {s.icon}
+            </div>
+            <div>
+              <p className="text-gray-500 text-sm font-medium">{s.label}</p>
+              <p className="text-2xl font-bold text-gray-900">{s.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      <Paper sx={{ width: '100%', minHeight: 400 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-          <Tabs value={tab} onChange={(e, v) => setTab(v)} centered>
-            <Tab label="Duyệt Phòng Khám (FR-38)" />
-            <Tab label="Quản lý Tài Khoản (FR-31)" />
-            <Tab label="System Logs" />
-          </Tabs>
-        </Box>
-        <Box sx={{ p: 3 }}>
-          {tab === 0 && <ClinicApprovalTable />}
-          {tab === 1 && <Typography align="center" sx={{ mt: 4, color: '#888' }}>Danh sách tài khoản toàn hệ thống...</Typography>}
-        </Box>
-      </Paper>
-    </Container>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* FR-38: Danh sách duyệt phòng khám */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-800">
+            <CheckCircle size={20} className="text-green-500" />
+            Phòng khám chờ duyệt
+          </h2>
+          <div className="text-gray-400 text-center py-16 border-2 border-dashed border-gray-100 rounded-xl">
+            <p>Hiện tại không có yêu cầu nào cần duyệt.</p>
+          </div>
+        </div>
+
+        {/* FR-33: Placeholder cho Quản lý ngưỡng AI */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h2 className="text-lg font-bold mb-4 flex items-center gap-2 text-gray-800">
+            <AlertCircle size={20} className="text-orange-500" />
+            Cảnh báo rủi ro hệ thống (FR-29)
+          </h2>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">Tất cả hệ thống đang hoạt động ổn định.</p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
-}
+};
+
+export default AdminDashboard;
