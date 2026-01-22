@@ -1,38 +1,3 @@
-<<<<<<< HEAD
-HELP.md
-target/
-.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
-
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
-
-### VS Code ###
-.vscode/
-=======
 ### --- PYTHON & AI --- ###
 # Thư mục môi trường ảo (Vấn đề gây nặng repo nhất)
 .venv/
@@ -82,4 +47,3 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
->>>>>>> 1aff468564cdb93c4c636154d50347893cb9f340
