@@ -1,6 +1,5 @@
 // src/pages/clinic/BillingPage.tsx
-import React from 'react';
-import { Container, Typography, Paper, Grid, Button, Box, Card, CardContent, CardActions } from '@mui/material';
+import { Container, Typography, Button, Box, Card,Grid , CardContent, CardActions } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 
 const plans = [
@@ -12,10 +11,13 @@ const plans = [
 export default function BillingPage() {
     return (
         <Container maxWidth="lg" sx={{ mt: 4 }}>
-            <Typography variant="h4" sx={{ mb: 4, textAlign: 'center', fontWeight: 'bold' }}>Gói Dịch Vụ Phòng Khám</Typography>
+            <Typography variant="h4" sx={{ mb: 4, textAlign: 'center', fontWeight: 'bold' }}>
+                Gói Dịch Vụ Phòng Khám
+            </Typography>
             <Grid container spacing={4} justifyContent="center">
                 {plans.map((plan) => (
-                    <Grid item xs={12} md={4} key={plan.name}> {/* Nếu lỗi Grid, hãy xóa 'item' */}
+                    // SỬA: Thay 'item xs={12} md={4}' bằng 'size={{ xs: 12, md: 4 }}'
+                    <Grid size={{ xs: 12, md: 4 }} key={plan.name}>
                         <Card sx={{ 
                             height: '100%', display: 'flex', flexDirection: 'column', 
                             border: plan.recommended ? '2px solid #1976d2' : '1px solid #ddd',

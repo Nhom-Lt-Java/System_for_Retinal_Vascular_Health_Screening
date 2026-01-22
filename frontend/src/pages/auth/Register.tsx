@@ -16,13 +16,14 @@ import { useNavigate } from 'react-router-dom';
 import PersonIcon from '@mui/icons-material/Person';
 import EmailIcon from '@mui/icons-material/Email';
 import LockIcon from '@mui/icons-material/Lock';
+import authApi from '../../api/authApi'; // 👇 Import API
 
 export default function Register() {
   const navigate = useNavigate();
   
-  // Quản lý vai trò (0: Bệnh nhân, 1: Bác sĩ)
-  const [role, setRole] = useState(0);
+  const [role, setRole] = useState(0); // 0: Bệnh nhân, 1: Bác sĩ
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false); // Thêm loading
   
   const [formData, setFormData] = useState({
     fullName: '',
@@ -31,21 +32,19 @@ export default function Register() {
     confirmPassword: ''
   });
 
-  // Hàm kiểm tra tính hợp lệ của dữ liệu
   const validateForm = () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    // Regex: Ít nhất 8 ký tự, bao gồm ít nhất 1 chữ cái và 1 số
-    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/;
+    const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,}$/; // Tối thiểu 8 ký tự, có chữ và số
 
     if (!formData.fullName.trim()) return "Vui lòng nhập họ và tên.";
-    if (!emailRegex.test(formData.email)) return "Định dạng Email không hợp lệ (VD: example@mail.com).";
+    if (!emailRegex.test(formData.email)) return "Định dạng Email không hợp lệ.";
     if (!passwordRegex.test(formData.password)) return "Mật khẩu phải có ít nhất 8 ký tự, bao gồm cả chữ và số.";
     if (formData.password !== formData.confirmPassword) return "Mật khẩu nhập lại không khớp.";
     
     return null;
   };
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError('');
 
@@ -55,15 +54,33 @@ export default function Register() {
       return;
     }
 
-    // Logic xử lý dữ liệu (Sẽ kết nối với authApi.ts sau này)
-    const finalData = { 
-      ...formData, 
-      role: role === 0 ? 'patient' : 'doctor' 
-    };
-    
-    console.log("Dữ liệu đăng ký:", finalData);
-    alert("Đăng ký thành công!");
-    navigate('/login');
+    setLoading(true);
+
+    try {
+      // 👇 LOGIC GỬI API THẬT
+      const payload = {
+        username: formData.email,       // Backend cần username (lấy email làm username)
+        email: formData.email,
+        fullName: formData.fullName,
+        password: formData.password,
+        role: role === 0 ? 'USER' : 'DOCTOR' // Backend cần string viết hoa
+      };
+
+      console.log("Đang gửi đăng ký:", payload);
+      await authApi.register(payload); // Gọi API
+
+      alert("Đăng ký thành công! Vui lòng đăng nhập.");
+      navigate('/login');
+
+    } catch (err: any) {
+      console.error("Lỗi đăng ký:", err);
+      // Hiển thị lỗi từ Backend (Ví dụ: Email đã tồn tại)
+      const message = err.response?.data || "Đăng ký thất bại. Vui lòng thử lại.";
+      // Backend có thể trả về object {message: "..."} hoặc string
+      setError(typeof message === 'object' ? (message.message || JSON.stringify(message)) : message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -83,7 +100,6 @@ export default function Register() {
           Hệ thống tầm soát sức khỏe võng mạc AI
         </Typography>
 
-        {/* Phần chọn vai trò */}
         <Tabs 
           value={role} 
           onChange={(_, v) => setRole(v)} 
@@ -102,70 +118,53 @@ export default function Register() {
         
         <Box component="form" onSubmit={handleSubmit} noValidate>
           <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Họ và tên"
-            name="fullName"
-            autoFocus
+            margin="normal" required fullWidth label="Họ và tên" name="fullName" autoFocus
             onChange={handleChange}
-            InputProps={{
-              startAdornment: (<InputAdornment position="start"><PersonIcon color="action" /></InputAdornment>),
+            // Fix lỗi gạch ngang InputProps bằng slotProps
+            slotProps={{
+              input: {
+                startAdornment: (<InputAdornment position="start"><PersonIcon color="action" /></InputAdornment>),
+              }
             }}
           />
           <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Email"
-            name="email"
-            type="email"
-            placeholder="example@mail.com"
+            margin="normal" required fullWidth label="Email" name="email" type="email" placeholder="example@mail.com"
             onChange={handleChange}
-            InputProps={{
-              startAdornment: (<InputAdornment position="start"><EmailIcon color="action" /></InputAdornment>),
+            slotProps={{
+              input: {
+                startAdornment: (<InputAdornment position="start"><EmailIcon color="action" /></InputAdornment>),
+              }
             }}
           />
           <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Mật khẩu"
-            name="password"
-            type="password"
-            helperText="Tối thiểu 8 ký tự, gồm chữ và số"
+            margin="normal" required fullWidth label="Mật khẩu" name="password" type="password" helperText="Tối thiểu 8 ký tự, gồm chữ và số"
             onChange={handleChange}
-            InputProps={{
-              startAdornment: (<InputAdornment position="start"><LockIcon color="action" /></InputAdornment>),
+            slotProps={{
+              input: {
+                startAdornment: (<InputAdornment position="start"><LockIcon color="action" /></InputAdornment>),
+              }
             }}
           />
           <TextField
-            margin="normal"
-            required
-            fullWidth
-            label="Xác nhận mật khẩu"
-            name="confirmPassword"
-            type="password"
+            margin="normal" required fullWidth label="Xác nhận mật khẩu" name="confirmPassword" type="password"
             onChange={handleChange}
-            InputProps={{
-              startAdornment: (<InputAdornment position="start"><LockIcon color="action" /></InputAdornment>),
+            slotProps={{
+              input: {
+                startAdornment: (<InputAdornment position="start"><LockIcon color="action" /></InputAdornment>),
+              }
             }}
           />
           
           <Button 
-            type="submit" 
-            fullWidth 
-            variant="contained" 
+            type="submit" fullWidth variant="contained" disabled={loading}
             sx={{ mt: 4, mb: 2, py: 1.5, borderRadius: 3, fontWeight: 'bold', fontSize: '1rem', textTransform: 'none' }}
           >
-            Tạo tài khoản
+            {loading ? "Đang xử lý..." : "Tạo tài khoản"}
           </Button>
 
           <Box textAlign="center" sx={{ mt: 1 }}>
             <MuiLink 
-              component="button"
-              variant="body2"
-              onClick={() => navigate('/login')}
+              component="button" variant="body2" onClick={() => navigate('/login')}
               sx={{ cursor: 'pointer', textDecoration: 'none', fontWeight: 500 }}
             >
               Đã có tài khoản? Đăng nhập ngay

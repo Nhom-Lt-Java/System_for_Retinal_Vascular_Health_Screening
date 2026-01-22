@@ -35,16 +35,19 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Kích hoạt CORS
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // QUAN TRỌNG: Mở khóa cho API đăng nhập/đăng ký
                 .requestMatchers("/api/auth/**").permitAll()
+                // Các API khác yêu cầu đăng nhập
                 .anyRequest().authenticated()
             );
 
         return http.build();
     }
 
+    // Cấu hình CORS để Frontend (localhost:5173) gọi được Backend
     @Bean
     public UrlBasedCorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();

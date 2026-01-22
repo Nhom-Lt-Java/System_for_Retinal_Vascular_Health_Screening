@@ -1,8 +1,8 @@
-import React from 'react';
 import { Container, Typography, Table, TableBody, TableCell, TableHead, TableRow, Paper, Button, Chip, Box, IconButton } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
+// Loại bỏ dòng import React from 'react' bị thừa
 
 export default function DoctorManager() {
   const doctors = [
@@ -14,7 +14,7 @@ export default function DoctorManager() {
   return (
     <Container maxWidth="lg" sx={{ mt: 4 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" color="primary" fontWeight="bold">Quản lý Bác sĩ</Typography>
+        <Typography variant="h4" color="primary" fontWeight="bold">Quản lý Bác sĩ (FR-23)</Typography>
         <Button variant="contained" startIcon={<AddIcon />}>Thêm Bác sĩ</Button>
       </Box>
       <Paper elevation={2}>
@@ -24,7 +24,6 @@ export default function DoctorManager() {
               <TableCell><strong>ID</strong></TableCell>
               <TableCell><strong>Họ tên</strong></TableCell>
               <TableCell><strong>Email</strong></TableCell>
-              <TableCell><strong>SĐT</strong></TableCell>
               <TableCell><strong>Trạng thái</strong></TableCell>
               <TableCell align="right"><strong>Hành động</strong></TableCell>
             </TableRow>
@@ -35,7 +34,6 @@ export default function DoctorManager() {
                 <TableCell>{doc.id}</TableCell>
                 <TableCell>{doc.name}</TableCell>
                 <TableCell>{doc.email}</TableCell>
-                <TableCell>{doc.phone}</TableCell>
                 <TableCell>
                   <Chip label={doc.status} color={doc.status === 'Active' ? 'success' : 'default'} size="small" />
                 </TableCell>

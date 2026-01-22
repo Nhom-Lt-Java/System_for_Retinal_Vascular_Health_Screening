@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// src/pages/clinic/BulkUpload.tsx
+import { useState } from 'react'; // SỬA: Xóa import React dư thừa
 import { Container, Paper, Typography, Box, Button, LinearProgress } from '@mui/material';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 

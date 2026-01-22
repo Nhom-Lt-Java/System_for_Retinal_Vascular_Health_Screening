@@ -25,10 +25,10 @@ public class AuthService {
         throw new RuntimeException("Tên đăng nhập đã tồn tại!");
     }
 
-
+    // 👇 CHÈN 2 DÒNG NÀY VÀO ĐỂ BẮT TẬN TAY 👇
     System.out.println("=== KIỂM TRA LÚC ĐĂNG KÝ ===");
     System.out.println("1. Mật khẩu nhận từ Controller: " + user.getPassword());
-    
+    // ---------------------------------------------
 
     String encodedPassword = passwordEncoder.encode(user.getPassword());
     user.setPassword(encodedPassword);
@@ -41,6 +41,7 @@ public class AuthService {
         User user = userRepo.findByUsername(username)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng!"));
 
+        // 👇 ĐOẠN MỚI THÊM: In ra Terminal để kiểm tra xem Database đang lưu cái gì
         System.out.println("=== KIỂM TRA ĐĂNG NHẬP ===");
         System.out.println("1. Mật khẩu bạn nhập: " + password);
         System.out.println("2. Mật khẩu trong DB: " + user.getPassword());

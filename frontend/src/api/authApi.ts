@@ -7,7 +7,8 @@ const authApi = {
   },
 
   register: (data: any) => {
-    const url = '/auth/register';
+    // 👇 SỬA LẠI: Thêm /client cho khớp với Backend
+    const url = '/auth/register/client'; 
     return axiosClient.post(url, data);
   },
 
