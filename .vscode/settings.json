@@ -1,7 +1,0 @@
-{
-    "python.analysis.extraPaths": [
-        "./ai-core"
-    ],
-    "java.configuration.updateBuildConfiguration": "interactive",
-    "java.compile.nullAnalysis.mode": "disabled"
-}
