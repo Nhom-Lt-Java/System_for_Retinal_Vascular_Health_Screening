@@ -1,44 +1,156 @@
-import React, { useState } from 'react';
-import { Container, Paper, Typography, Slider, Box, Button, Divider, Grid } from '@mui/material';
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Container,
+  Typography,
+  Paper,
+  Box,
+  TextField,
+  Button,
+  Alert,
+  CircularProgress,
+  Divider,
+} from "@mui/material";
+import { getAiSettings, updateAiSetting, type AiSettings } from "../../api/adminApi";
 
 export default function AISettings() {
-  const [threshold, setThreshold] = useState<number>(0.75);
+  const [settings, setSettings] = useState<AiSettings>({});
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState("");
+
+  const modelVersion = useMemo(() => String(settings?.model_version ?? "0.1.0"), [settings]);
+  const thresholdsText = useMemo(() => {
+    const t = settings?.thresholds ?? { disease_threshold: 0.75 };
+    try {
+      return JSON.stringify(t, null, 2);
+    } catch {
+      return "{}";
+    }
+  }, [settings]);
+
+  const [mv, setMv] = useState("0.1.0");
+  const [th, setTh] = useState("{}");
+
+  const load = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      setOk("");
+      const data = await getAiSettings();
+      setSettings(data || {});
+      setMv(String((data || {}).model_version ?? "0.1.0"));
+      const t = (data || {}).thresholds ?? { disease_threshold: 0.75 };
+      setTh(JSON.stringify(t, null, 2));
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "Không tải được AI settings.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const thError = useMemo(() => {
+    try {
+      JSON.parse(th);
+      return "";
+    } catch {
+      return "Thresholds phải là JSON hợp lệ.";
+    }
+  }, [th]);
+
+  const onSave = async () => {
+    try {
+      setSaving(true);
+      setError("");
+      setOk("");
+
+      if (thError) {
+        setError(thError);
+        return;
+      }
+
+      const thresholdsObj = JSON.parse(th);
+      await updateAiSetting("model_version", mv);
+      await updateAiSetting("thresholds", thresholdsObj);
+
+      setOk("Đã lưu AI settings vào DB.");
+      await load();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "Lưu thất bại.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onReset = () => {
+    setMv(modelVersion);
+    setTh(thresholdsText);
+    setOk("");
+    setError("");
+  };
 
   return (
-    <Container maxWidth="md" sx={{ mt: 4 }}>
-      <Paper sx={{ p: 5 }}>
-        <Typography variant="h5" gutterBottom fontWeight="bold">Cấu hình tham số AI (FR-33)</Typography>
-        <Typography color="textSecondary" paragraph>
-          Điều chỉnh các ngưỡng quyết định (Threshold) cho mô hình Deep Learning.
-        </Typography>
+    <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
+      <Typography variant="h4" fontWeight="bold" gutterBottom>
+        AI Settings (Admin)
+      </Typography>
+      <Typography color="textSecondary" sx={{ mb: 2 }}>
+        Cấu hình model version, thresholds và tham số AI. Thay đổi sẽ được ghi DB và áp dụng cho các lần phân tích tiếp theo.
+      </Typography>
 
-        <Box sx={{ mt: 5, px: 2 }}>
-          <Grid container spacing={2} alignItems="center">
-            <Grid item xs={12}>
-              <Typography gutterBottom>
-                Ngưỡng xác suất bệnh (Disease Probability Threshold): <span style={{ color: 'blue', fontWeight: 'bold' }}>{threshold}</span>
-              </Typography>
-            </Grid>
-            <Grid item xs={12}>
-              <Slider
-                value={threshold}
-                min={0.5}
-                max={0.99}
-                step={0.01}
-                onChange={(e, val) => setThreshold(val as number)}
-                valueLabelDisplay="auto"
-                marks={[{ value: 0.5, label: '0.5 (Nhạy)' }, { value: 0.99, label: '0.99 (Chặt)' }]}
-              />
-            </Grid>
-          </Grid>
-        </Box>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+          {error}
+        </Alert>
+      )}
+      {ok && (
+        <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
+          {ok}
+        </Alert>
+      )}
 
-        <Divider sx={{ my: 4 }} />
+      <Paper sx={{ p: 3, borderRadius: 3 }}>
+        {loading ? (
+          <Box display="flex" justifyContent="center" py={6}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <>
+            <TextField
+              label="Model version"
+              fullWidth
+              value={mv}
+              onChange={(e) => setMv(e.target.value)}
+              helperText="Ví dụ: 0.1.0 (traceability trong report)"
+            />
 
-        <Box display="flex" justifyContent="flex-end" gap={2}>
-          <Button variant="outlined">Đặt lại mặc định</Button>
-          <Button variant="contained" color="primary">Lưu cấu hình</Button>
-        </Box>
+            <Divider sx={{ my: 2 }} />
+
+            <TextField
+              label="Thresholds (JSON)"
+              fullWidth
+              multiline
+              minRows={8}
+              value={th}
+              onChange={(e) => setTh(e.target.value)}
+              error={!!thError}
+              helperText={thError || "Ví dụ: { \"disease_threshold\": 0.75, \"vessel_threshold\": 0.5 }"}
+            />
+
+            <Box display="flex" gap={2} justifyContent="flex-end" sx={{ mt: 2 }}>
+              <Button variant="outlined" onClick={onReset} disabled={saving}>
+                Reset
+              </Button>
+              <Button variant="contained" onClick={onSave} disabled={saving}>
+                {saving ? "Đang lưu..." : "Lưu"}
+              </Button>
+            </Box>
+          </>
+        )}
       </Paper>
     </Container>
   );

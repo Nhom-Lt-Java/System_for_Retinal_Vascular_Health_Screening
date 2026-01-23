@@ -1,82 +1,108 @@
 package com.aura.retinal.controller;
 
-import com.aura.retinal.entity.Role;
+import com.aura.retinal.dto.auth.AuthResponse;
+import com.aura.retinal.dto.auth.AuthUser;
+import com.aura.retinal.dto.auth.LoginRequest;
+import com.aura.retinal.dto.auth.LoginResponse;
+import com.aura.retinal.dto.auth.RegisterRequest;
 import com.aura.retinal.entity.User;
-import com.aura.retinal.payload.request.LoginRequest;
-import com.aura.retinal.payload.request.SignupRequest; // Import file vừa tạo
-import com.aura.retinal.payload.response.JwtResponse;
 import com.aura.retinal.repository.UserRepository;
 import com.aura.retinal.service.AuthService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.password.PasswordEncoder;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
-@CrossOrigin(origins = "*", maxAge = 3600)
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
-    @Autowired
-    UserRepository userRepository;
 
-    @Autowired
-    PasswordEncoder encoder;
+    private final AuthService authService;
+    private final UserRepository userRepo;
 
-    @Autowired
-    AuthService authService;
-
-    // API Đăng nhập
-    @PostMapping("/login")
-    public ResponseEntity<?> authenticateUser(@RequestBody LoginRequest loginRequest) {
-        try {
-            String token = authService.login(loginRequest.getUsername(), loginRequest.getPassword());
-            User user = userRepository.findByUsername(loginRequest.getUsername()).orElseThrow();
-            return ResponseEntity.ok(new JwtResponse(token, user.getRole().name()));
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body("Sai thông tin đăng nhập!");
-        }
+    public AuthController(AuthService authService, UserRepository userRepo) {
+        this.authService = authService;
+        this.userRepo = userRepo;
     }
 
-    // API Đăng ký
+    /**
+     * Login (supports both JSON body and legacy query params for compatibility).
+     */
+    @PostMapping("/login")
+    public LoginResponse login(
+            @RequestBody(required = false) LoginRequest body,
+            @RequestParam(required = false) String username,
+            @RequestParam(required = false) String password
+    ) {
+        String u = body != null ? body.username() : username;
+        String p = body != null ? body.password() : password;
+        if (u == null || p == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing username/password");
+        }
+
+        User db = authService.authenticate(u, p);
+
+        String token = authService.login(u, p);
+        AuthUser user = toAuthUser(db);
+        return new LoginResponse(token, user, user.role());
+    }
+
+    /**
+     * Register (demo): USER/DOCTOR/CLINIC
+     */
     @PostMapping("/register")
-    public ResponseEntity<?> registerUser(@RequestBody SignupRequest signUpRequest) {
-        if (userRepository.existsByUsername(signUpRequest.getUsername())) {
-            return ResponseEntity.badRequest().body("Lỗi: Tên đăng nhập đã tồn tại!");
+    public AuthResponse register(@Valid @RequestBody RegisterRequest req) {
+        User u = authService.register(req);
+        String token = authService.login(req.username(), req.password());
+        return new AuthResponse(token, toAuthUser(u));
+    }
+
+    /**
+     * Get current authenticated user
+     */
+    @GetMapping("/me")
+    public AuthUser me(Authentication auth) {
+        if (auth == null || auth.getName() == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated");
+        }
+        User u = userRepo.findByUsername(auth.getName()).orElseThrow();
+        return toAuthUser(u);
+    }
+
+    private static AuthUser toAuthUser(User u) {
+        Long clinicId = u.getClinic() != null ? u.getClinic().getId() : null;
+
+        String fullName = u.getFullName();
+        if (fullName == null || fullName.isBlank()) {
+            String fn = u.getFirstName() == null ? "" : u.getFirstName().trim();
+            String ln = u.getLastName() == null ? "" : u.getLastName().trim();
+            String merged = (fn + " " + ln).trim();
+            fullName = merged.isBlank() ? null : merged;
         }
 
-        try {
-            User user = new User();
-            user.setUsername(signUpRequest.getUsername());
-            user.setEmail(signUpRequest.getEmail());
-            user.setPassword(signUpRequest.getPassword()); 
-            user.setFullName(signUpRequest.getFullName());
+        return new AuthUser(
+                u.getId(),
+                u.getUsername(),
+                u.getRole().name(),
+                clinicId,
+                fullName,
+                u.getFirstName(),
+                u.getLastName(),
+                u.getAssignedDoctorId(),
+                u.getEmail(),
+                u.getPhone(),
+                u.isEnabled()
+        );
+    }
 
-            // Xử lý Role
-            String strRole = signUpRequest.getRole();
-            if (strRole == null) {
-                user.setRole(Role.USER);
-            } else {
-                switch (strRole) {
-                    case "ADMIN": 
-                    case "SUPER_ADMIN":
-                        user.setRole(Role.SUPER_ADMIN); 
-                        break;
-                    case "DOCTOR": 
-                        user.setRole(Role.DOCTOR); 
-                        break;
-                    case "CLINIC_ADMIN": 
-                        user.setRole(Role.CLINIC_ADMIN); 
-                        break;
-                    default: 
-                        user.setRole(Role.USER);
-                }
-            }
-
-            authService.register(user);
-            return ResponseEntity.ok("Đăng ký thành công!");
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body("Lỗi hệ thống: " + e.getMessage());
-        }
+    /**
+     * Simple health for FE
+     */
+    @GetMapping("/ping")
+    public Map<String, Object> ping() {
+        return Map.of("ok", true);
     }
 }

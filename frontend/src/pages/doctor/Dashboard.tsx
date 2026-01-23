@@ -1,126 +1,89 @@
-import React from 'react';
-import { 
-  Container, 
-  Paper, 
-  Typography, 
-  Box, 
-  Button, 
-  Card, 
-  Chip, 
-  Grid 
-} from '@mui/material'; // Sửa lỗi: Import Grid tiêu chuẩn
-import { useNavigate } from 'react-router-dom';
-import { Dashboard as DashboardIcon, Logout } from '@mui/icons-material';
+import React, { useEffect, useState } from "react";
+import {
+  Container,
+  Typography,
+  Grid,
+  Paper,
+  Box,
+  Alert,
+  CircularProgress,
+  Button,
+} from "@mui/material";
+import { useNavigate } from "react-router-dom";
+import { getDoctorDashboard } from "../../api/doctorApi";
 
 export default function DoctorDashboard() {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [data, setData] = useState<any>(null);
 
-  // Dữ liệu giả lập danh sách bệnh nhân
-  const recentPatients = [
-    { id: 1, name: "Nguyễn Văn A", age: 45, status: "High Risk", date: "21/12/2024" },
-    { id: 2, name: "Trần Thị B", age: 32, status: "Normal", date: "20/12/2024" },
-    { id: 3, name: "Lê Văn C", age: 58, status: "Pending", date: "19/12/2024" },
-  ];
+  const load = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const d = await getDoctorDashboard();
+      setData(d);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "Không tải được dashboard bác sĩ.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const patients = data?.patients ?? 0;
+  const totalAnalyses = data?.totalAnalyses ?? 0;
+  const highRisk = data?.highRisk ?? 0;
+  const pendingReview = data?.pendingReview ?? 0;
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      {/* Header */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
-        <Box display="flex" alignItems="center" gap={1}>
-          <DashboardIcon color="primary" fontSize="large" />
-          <Typography variant="h4" color="primary" sx={{ fontWeight: 'bold' }}>
-            Bác sĩ: Dr. Strange
-          </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4" fontWeight="bold" color="primary">
+          Doctor Dashboard
+        </Typography>
+        <Box display="flex" gap={1}>
+          <Button variant="outlined" onClick={load}>Refresh</Button>
+          <Button variant="contained" onClick={() => navigate("/doctor/patients")}>Danh sách bệnh nhân</Button>
         </Box>
-        <Button 
-          variant="outlined" 
-          color="error" 
-          startIcon={<Logout />}
-          onClick={() => navigate('/login')} // Dùng navigate thay vì href để tránh load lại trang
-        >
-          Đăng xuất
-        </Button>
       </Box>
 
-      <Grid container spacing={3}>
-        {/* Thẻ thống kê */}
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, display: 'flex', flexDirection: 'column', height: 140, bgcolor: '#e3f2fd', borderRadius: 2 }}>
-            <Typography color="textSecondary" fontWeight="bold">Tổng số ca chụp</Typography>
-            <Typography component="p" variant="h3" sx={{ mt: 1, fontWeight: 'bold' }}>
-              128
-            </Typography>
-          </Paper>
-        </Grid>
-        
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, display: 'flex', flexDirection: 'column', height: 140, bgcolor: '#ffebee', borderRadius: 2 }}>
-            <Typography color="textSecondary" fontWeight="bold">Ca nguy cơ cao</Typography>
-            <Typography component="p" variant="h3" color="error" sx={{ mt: 1, fontWeight: 'bold' }}>
-              12
-            </Typography>
-          </Paper>
-        </Grid>
+      {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{error}</Alert>}
 
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, display: 'flex', flexDirection: 'column', height: 140, bgcolor: '#e8f5e9', borderRadius: 2 }}>
-            <Typography color="textSecondary" fontWeight="bold">Đã xử lý</Typography>
-            <Typography component="p" variant="h3" color="success.main" sx={{ mt: 1, fontWeight: 'bold' }}>
-              116
-            </Typography>
-          </Paper>
+      {loading ? (
+        <Box display="flex" justifyContent="center" py={6}><CircularProgress /></Box>
+      ) : (
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={3}>
+            <Paper sx={{ p: 3, borderRadius: 3 }}>
+              <Typography color="textSecondary" fontWeight="bold">Bệnh nhân</Typography>
+              <Typography variant="h3" sx={{ mt: 1, fontWeight: "bold" }}>{patients}</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Paper sx={{ p: 3, borderRadius: 3 }}>
+              <Typography color="textSecondary" fontWeight="bold">Tổng phân tích</Typography>
+              <Typography variant="h3" sx={{ mt: 1, fontWeight: "bold" }}>{totalAnalyses}</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Paper sx={{ p: 3, borderRadius: 3 }}>
+              <Typography color="textSecondary" fontWeight="bold">Nguy cơ cao</Typography>
+              <Typography variant="h3" sx={{ mt: 1, fontWeight: "bold" }} color="error">{highRisk}</Typography>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Paper sx={{ p: 3, borderRadius: 3 }}>
+              <Typography color="textSecondary" fontWeight="bold">Chờ duyệt</Typography>
+              <Typography variant="h3" sx={{ mt: 1, fontWeight: "bold" }} color="warning.main">{pendingReview}</Typography>
+            </Paper>
+          </Grid>
         </Grid>
-
-        {/* Danh sách bệnh nhân gần đây */}
-        <Grid item xs={12}>
-          <Paper sx={{ p: 3, borderRadius: 2 }}>
-            <Typography component="h2" variant="h6" color="primary" gutterBottom sx={{ fontWeight: 'bold' }}>
-              Bệnh nhân cần chẩn đoán mới nhất (FR-14)
-            </Typography>
-            
-            <Grid container spacing={2} sx={{ mt: 1 }}>
-              {recentPatients.map((patient) => (
-                <Grid item xs={12} key={patient.id}>
-                  <Card variant="outlined" sx={{ 
-                    display: 'flex', 
-                    justifyContent: 'space-between', 
-                    p: 2, 
-                    alignItems: 'center',
-                    transition: '0.3s',
-                    '&:hover': { boxShadow: 2, borderColor: 'primary.main' }
-                  }}>
-                    <Box>
-                      <Typography variant="h6" sx={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{patient.name}</Typography>
-                      <Typography variant="body2" color="textSecondary">
-                        Tuổi: {patient.age} — Ngày khám: {patient.date}
-                      </Typography>
-                    </Box>
-                    <Box display="flex" alignItems="center" gap={2}>
-                      <Chip 
-                        label={patient.status} 
-                        size="small"
-                        color={patient.status === "High Risk" ? "error" : patient.status === "Normal" ? "success" : "warning"} 
-                        sx={{ fontWeight: 'bold' }}
-                      />
-                      <Button 
-                        variant="contained" 
-                        size="small" 
-                        onClick={() => navigate('/doctor/patients')}
-                        sx={{ borderRadius: 2 }}
-                      >
-                        Chi tiết
-                      </Button>
-                    </Box>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-            <Box mt={3} textAlign="center">
-               <Button onClick={() => navigate('/doctor/patients')}>Xem tất cả bệnh nhân</Button>
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+      )}
     </Container>
   );
 }

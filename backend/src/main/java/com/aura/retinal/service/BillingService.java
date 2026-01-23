@@ -35,8 +35,9 @@ public class BillingService {
         orderRepo.save(order);
 
         // Cộng credit
-        UserCredit credit = creditRepo.findByUserId(userId).orElse(new UserCredit(user));
-        credit.setRemainingCredits(credit.getRemainingCredits() + pkg.getCredits());
+        UserCredit credit = creditRepo.findByUser_Id(userId).orElse(new UserCredit(user));
+        int currentCredits = credit.getRemainingCredits() == null ? 0 : credit.getRemainingCredits();
+        credit.setRemainingCredits(currentCredits + pkg.getCredits());
         creditRepo.save(credit);
 
         return order;
@@ -44,18 +45,49 @@ public class BillingService {
 
     public UserCredit getUserCredit(Long userId) {
         User user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
-        return creditRepo.findByUserId(userId).orElse(new UserCredit(user));
+        return creditRepo.findByUser_Id(userId).orElse(new UserCredit(user));
     }
 
     @Transactional
     public boolean consumeCredit(Long userId) {
-        UserCredit credit = creditRepo.findByUserId(userId).orElse(null);
-        if (credit != null && credit.getRemainingCredits() > 0) {
-            credit.setRemainingCredits(credit.getRemainingCredits() - 1);
-            credit.setTotalUsed(credit.getTotalUsed() + 1);
-            creditRepo.save(credit);
+        try {
+            consumeCredits(userId, 1);
             return true;
+        } catch (RuntimeException ex) {
+            return false;
         }
-        return false;
     }
+
+    @Transactional
+    public void refundCredit(Long userId) {
+        refundCredits(userId, 1);
+    }
+
+    @Transactional
+    public void consumeCredits(Long userId, int count) {
+        if (count <= 0) return;
+        User user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
+        UserCredit credit = creditRepo.findByUser_Id(userId).orElse(new UserCredit(user));
+        int current = credit.getRemainingCredits() == null ? 0 : credit.getRemainingCredits();
+        if (current < count) {
+            throw new RuntimeException("Not enough credits");
+        }
+        credit.setRemainingCredits(current - count);
+        int used = credit.getTotalUsed() == null ? 0 : credit.getTotalUsed();
+        credit.setTotalUsed(used + count);
+        creditRepo.save(credit);
+    }
+
+    @Transactional
+    public void refundCredits(Long userId, int count) {
+        if (count <= 0) return;
+        User user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
+        UserCredit credit = creditRepo.findByUser_Id(userId).orElse(new UserCredit(user));
+        int current = credit.getRemainingCredits() == null ? 0 : credit.getRemainingCredits();
+        credit.setRemainingCredits(current + count);
+        int used = credit.getTotalUsed() == null ? 0 : credit.getTotalUsed();
+        credit.setTotalUsed(Math.max(0, used - count));
+        creditRepo.save(credit);
+    }
+
 }

@@ -2,6 +2,8 @@ import os
 import io
 from typing import Optional, Dict, Any
 
+import threading
+
 import numpy as np
 import cv2
 import torch
@@ -40,6 +42,22 @@ HEAT_ALPHA = float(os.getenv("HEAT_ALPHA", "0.45"))
 
 OUT_DIR = os.getenv("OUT_DIR", "artifacts/api_outputs")
 os.makedirs(OUT_DIR, exist_ok=True)
+
+# =========================
+# Model load state (graceful startup)
+# =========================
+_CLS_LOCK = threading.Lock()
+_VESSEL_LOCK = threading.Lock()
+
+CLS_MODEL = None
+CLS_TF = None
+CLASSES = ["NORMAL", "DR", "AMD", "OTHER"]
+CLS_MODEL_NAME = "efficientnet_b0"
+_LAST_CONV = None
+_CLS_ERROR: Optional[str] = None
+
+VESSEL_MODEL = None
+_VESSEL_ERROR: Optional[str] = None
 
 # =========================
 # MinIO (upload artifacts)
@@ -149,42 +167,61 @@ def _apply_heatmap(rgb: np.ndarray, heatmap01: np.ndarray, alpha: float) -> tupl
     return out, hm_rgb
 
 
-# =========================
-# Load CLASSIFIER (once)
-# =========================
-_cls_obj = _load_ckpt_any(CLS_CKPT)
+ # =========================
+ # Load CLASSIFIER (graceful)
+ # =========================
+def load_classifier_model() -> None:
+    """Load classifier model once. If missing/bad ckpt, keep service running and report in health."""
+    global CLS_MODEL, CLS_TF, CLASSES, CLS_MODEL_NAME, _LAST_CONV, _CLS_ERROR
+    with _CLS_LOCK:
+        if CLS_MODEL is not None and CLS_TF is not None:
+            return
+        try:
+            if not os.path.exists(CLS_CKPT):
+                raise RuntimeError(f"Classifier checkpoint not found: {CLS_CKPT}")
 
-# classes list
-if isinstance(_cls_obj, dict) and "classes" in _cls_obj:
-    CLASSES = _cls_obj["classes"]
-else:
-    # fallback default
-    CLASSES = ["NORMAL", "DR", "AMD", "OTHER"]
+            _cls_obj = _load_ckpt_any(CLS_CKPT)
 
-# model name config
-if isinstance(_cls_obj, dict) and "config" in _cls_obj and isinstance(_cls_obj["config"], dict):
-    CLS_MODEL_NAME = _cls_obj["config"].get("model", "efficientnet_b0")
-else:
-    CLS_MODEL_NAME = "efficientnet_b0"
+            # classes list
+            if isinstance(_cls_obj, dict) and "classes" in _cls_obj:
+                CLASSES = _cls_obj["classes"]
+            else:
+                CLASSES = ["NORMAL", "DR", "AMD", "OTHER"]
 
-CLS_MODEL = build_disease_classifier(
-    CLS_MODEL_NAME,
-    num_classes=len(CLASSES),
-    pretrained=False,
-    in_channels=3,
-)
+            # model name config
+            if isinstance(_cls_obj, dict) and "config" in _cls_obj and isinstance(_cls_obj["config"], dict):
+                CLS_MODEL_NAME = _cls_obj["config"].get("model", "efficientnet_b0")
+            else:
+                CLS_MODEL_NAME = "efficientnet_b0"
 
-_cls_sd = _strip_module_prefix(_extract_state_dict(_cls_obj))
-CLS_MODEL.load_state_dict(_cls_sd, strict=True)
-CLS_MODEL.to(DEVICE).eval()
+            model = build_disease_classifier(
+                CLS_MODEL_NAME,
+                num_classes=len(CLASSES),
+                pretrained=False,
+                in_channels=3,
+            )
 
-CLS_TF = transforms.Compose(
-    [
-        transforms.Resize((CLS_SIZE, CLS_SIZE)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
+            _cls_sd = _strip_module_prefix(_extract_state_dict(_cls_obj))
+            model.load_state_dict(_cls_sd, strict=True)
+            model.to(DEVICE).eval()
+
+            tf = transforms.Compose(
+                [
+                    transforms.Resize((CLS_SIZE, CLS_SIZE)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                ]
+            )
+
+            CLS_MODEL = model
+            CLS_TF = tf
+            _LAST_CONV = _find_last_conv(CLS_MODEL)
+            _CLS_ERROR = None
+        except Exception as e:
+            CLS_MODEL = None
+            CLS_TF = None
+            _LAST_CONV = None
+            _CLS_ERROR = str(e)
 
 
 # =========================
@@ -198,14 +235,17 @@ def _find_last_conv(model: torch.nn.Module) -> Optional[torch.nn.Module]:
     return last
 
 
-_LAST_CONV = _find_last_conv(CLS_MODEL)
+# _LAST_CONV will be set when classifier is loaded
+
+# Try loading at startup but DO NOT crash service if ckpt is missing/bad.
+load_classifier_model()
 
 
 def gradcam_heatmap(pil_img: Image.Image, class_idx: int) -> np.ndarray:
     """
     returns heatmap float32 in [0..1], shape (CLS_SIZE, CLS_SIZE)
     """
-    if _LAST_CONV is None:
+    if _LAST_CONV is None or CLS_MODEL is None or CLS_TF is None:
         return np.zeros((CLS_SIZE, CLS_SIZE), dtype=np.float32)
 
     CLS_MODEL.zero_grad(set_to_none=True)
@@ -326,7 +366,51 @@ def load_vessel_model():
     raise RuntimeError("Không nhận dạng được kiến trúc vessel checkpoint (keys lạ).")
 
 
-VESSEL_MODEL = load_vessel_model()
+def load_vessel_model_safe() -> None:
+    """Load vessel model once. If missing/bad ckpt, keep service running and report in health."""
+    global VESSEL_MODEL, _VESSEL_ERROR
+    with _VESSEL_LOCK:
+        if VESSEL_MODEL is not None:
+            return
+        try:
+            if not os.path.exists(VESSEL_CKPT):
+                raise RuntimeError(f"Vessel checkpoint not found: {VESSEL_CKPT}")
+            VESSEL_MODEL = load_vessel_model()
+            _VESSEL_ERROR = None
+        except Exception as e:
+            VESSEL_MODEL = None
+            _VESSEL_ERROR = str(e)
+
+
+# Try loading at startup but DO NOT crash service if ckpt is missing/bad.
+load_vessel_model_safe()
+
+
+def ensure_models_loaded(load_vessel: bool = True) -> None:
+    """Attempt to load required models. Safe to call multiple times."""
+    load_classifier_model()
+    if load_vessel:
+        load_vessel_model_safe()
+
+
+def models_status() -> Dict[str, Any]:
+    """Return model readiness for /health endpoint."""
+    return {
+        "classifier": {
+            "ready": CLS_MODEL is not None and CLS_TF is not None,
+            "ckpt": CLS_CKPT,
+            "model": CLS_MODEL_NAME,
+            "classes": CLASSES,
+            "error": _CLS_ERROR,
+        },
+        "vessel": {
+            "ready": VESSEL_MODEL is not None,
+            "ckpt": VESSEL_CKPT,
+            "cfg": VESSEL_CFG,
+            "error": _VESSEL_ERROR,
+        },
+        "device": DEVICE,
+    }
 
 
 # =========================
@@ -338,6 +422,11 @@ def predict_image(
     vessel_thr: Optional[float] = None,
     analysis_id: Optional[str] = None,
 ) -> Dict[str, Any]:
+    # Ensure models (graceful). Classifier is required; vessel model is optional.
+    ensure_models_loaded(load_vessel=True)
+    if CLS_MODEL is None or CLS_TF is None:
+        raise RuntimeError(f"Classifier model not ready: {_CLS_ERROR or 'unknown error'}")
+
     thr = float(vessel_thr) if vessel_thr is not None else VESSEL_THR
 
     pil_img = pil_img.convert("RGB")
@@ -358,21 +447,24 @@ def predict_image(
     hm_up = cv2.resize(hm, (rgb0.shape[1], rgb0.shape[0]), interpolation=cv2.INTER_CUBIC)
     heat_overlay, heat_rgb = _apply_heatmap(rgb0, hm_up, alpha=HEAT_ALPHA)
 
-    # ---------- vessel segmentation ----------
+    # ---------- vessel segmentation (optional) ----------
+    overlay = None
+    v_mask = None
     rgb_v = cv2.resize(rgb0, (VESSEL_SIZE, VESSEL_SIZE), interpolation=cv2.INTER_AREA)
-    x_v = (rgb_v.astype(np.float32) / 255.0).transpose(2, 0, 1)  # CHW
-    x_v = torch.from_numpy(x_v).unsqueeze(0).to(DEVICE)
+    if VESSEL_MODEL is not None:
+        x_v = (rgb_v.astype(np.float32) / 255.0).transpose(2, 0, 1)  # CHW
+        x_v = torch.from_numpy(x_v).unsqueeze(0).to(DEVICE)
 
-    with torch.no_grad():
-        v_logits = VESSEL_MODEL(x_v)
-        if v_logits.dim() == 4:
-            v_map = v_logits[0, 0]
-        else:
-            v_map = v_logits[0]
-        v_prob = torch.sigmoid(v_map).detach().cpu().numpy()
+        with torch.no_grad():
+            v_logits = VESSEL_MODEL(x_v)
+            if v_logits.dim() == 4:
+                v_map = v_logits[0, 0]
+            else:
+                v_map = v_logits[0]
+            v_prob = torch.sigmoid(v_map).detach().cpu().numpy()
 
-    v_mask = (v_prob > thr).astype(np.uint8) * 255
-    overlay = _overlay_vessels_green(rgb_v, v_mask, alpha=OVERLAY_ALPHA)
+        v_mask = (v_prob > thr).astype(np.uint8) * 255
+        overlay = _overlay_vessels_green(rgb_v, v_mask, alpha=OVERLAY_ALPHA)
 
     # ---------- save debug outputs ----------
     base = os.path.splitext(os.path.basename(filename))[0]
@@ -381,8 +473,10 @@ def predict_image(
     out_heat = os.path.join(OUT_DIR, f"{base}_heatmap.png")
     out_heat_overlay = os.path.join(OUT_DIR, f"{base}_heatmap_overlay.png")
 
-    cv2.imwrite(out_overlay, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
-    cv2.imwrite(out_mask, v_mask)
+    if overlay is not None:
+        cv2.imwrite(out_overlay, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+    if v_mask is not None:
+        cv2.imwrite(out_mask, v_mask)
     cv2.imwrite(out_heat, cv2.cvtColor(heat_rgb, cv2.COLOR_RGB2BGR))
     cv2.imwrite(out_heat_overlay, cv2.cvtColor(heat_overlay, cv2.COLOR_RGB2BGR))
 
@@ -391,18 +485,23 @@ def predict_image(
         analysis_id = base  # fallback nếu backend không truyền
 
     prefix = f"{MINIO_PREFIX}/{analysis_id}"
-    overlay_key = f"{prefix}/overlay.png"
-    mask_key = f"{prefix}/mask.png"
+    overlay_key = ""
+    mask_key = ""
     heatmap_key = f"{prefix}/heatmap.png"
     heatmap_overlay_key = f"{prefix}/heatmap_overlay.png"
 
-    overlay_bytes = _png_bytes_from_rgb(overlay)
-    mask_bytes = _png_bytes_from_gray(v_mask)
+    overlay_bytes = None
+    mask_bytes = None
+    if overlay is not None and v_mask is not None:
+        overlay_key = f"{prefix}/overlay.png"
+        mask_key = f"{prefix}/mask.png"
+        overlay_bytes = _png_bytes_from_rgb(overlay)
+        mask_bytes = _png_bytes_from_gray(v_mask)
     heat_bytes = _png_bytes_from_rgb(heat_rgb)
     heat_overlay_bytes = _png_bytes_from_rgb(heat_overlay)
 
-    overlay_size = _put_png(overlay_key, overlay_bytes)
-    mask_size = _put_png(mask_key, mask_bytes)
+    overlay_size = _put_png(overlay_key, overlay_bytes) if overlay_bytes is not None else 0
+    mask_size = _put_png(mask_key, mask_bytes) if mask_bytes is not None else 0
     heatmap_size = _put_png(heatmap_key, heat_bytes)
     heatmap_overlay_size = _put_png(heatmap_overlay_key, heat_overlay_bytes)
 
@@ -413,8 +512,8 @@ def predict_image(
         "probs": {CLASSES[i]: float(prob[i]) for i in range(len(CLASSES))},
         "vessel_threshold": thr,
         "outputs": {
-            "overlay_path": out_overlay,
-            "mask_path": out_mask,
+            "overlay_path": out_overlay if overlay is not None else None,
+            "mask_path": out_mask if v_mask is not None else None,
             "heatmap_path": out_heat,
             "heatmap_overlay_path": out_heat_overlay,
         },

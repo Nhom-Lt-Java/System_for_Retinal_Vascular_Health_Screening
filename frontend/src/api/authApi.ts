@@ -6,9 +6,13 @@ const authApi = {
     return axiosClient.post(url, data);
   },
 
+  googleLogin: (idToken: string) => {
+    const url = '/auth/google';
+    return axiosClient.post(url, { idToken });
+  },
+
   register: (data: any) => {
-    // 👇 SỬA LẠI: Thêm /client cho khớp với Backend
-    const url = '/auth/register/client'; 
+    const url = '/auth/register';
     return axiosClient.post(url, data);
   },
 

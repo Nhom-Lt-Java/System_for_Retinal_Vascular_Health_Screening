@@ -1,25 +1,48 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useAuth } from "./context/AuthContext"; // SỬA: Dùng Hook thay vì localStorage trực tiếp
+import { useAuth } from "./context/AuthContext";
 import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-// AUTH
-import ClientLogin from "./pages/auth/ClientLogin";
-import ClientRegister from "./pages/auth/ClientRegister";
+// Auth
+import Login from "./pages/auth/Login";
+import Register from "./pages/auth/Register";
 
-// PAGES
-import UserDashboard from "./pages/user/Dashboard"; 
-import UserUpload from "./pages/user/Upload";       
-import UserProfile from "./pages/user/Profile"; // BỔ SUNG: Import trang hồ sơ
+// User
+import Upload from "./pages/user/Upload";
+import Result from "./pages/user/Result";
+import History from "./pages/user/History";
+import Profile from "./pages/user/Profile";
+
+// Doctor
+import DoctorDashboard from "./pages/doctor/Dashboard";
 import PatientList from "./pages/doctor/PatientList";
+import DoctorTrends from "./pages/doctor/Trends";
+
+// Clinic
 import ClinicDashboard from "./pages/clinic/ClinicDashboard";
 import DoctorManager from "./pages/clinic/DoctorManager";
+import ClinicPatients from "./pages/clinic/Patients";
+import BulkUpload from "./pages/clinic/BulkUpload";
+
+// Admin
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import AISettings from "./pages/admin/AISettings";
+import PricingManager from "./pages/admin/PricingManager";
+import AdminUserManager from "./pages/admin/UserManager";
+import NotificationTemplates from "./pages/admin/NotificationTemplates";
+
+// Common
+import NotificationsPage from "./pages/common/Notifications";
+import ChatPage from "./pages/common/Chat";
+import Billing from "./pages/common/Billing";
 
 function App() {
-  const { token, role, loading } = useAuth(); // Lấy dữ liệu từ Context để đảm bảo đồng bộ
+  const { token, role, loading } = useAuth();
 
-  // Hiển thị màn hình chờ khi đang tải dữ liệu user (tránh màn hình trắng)
+  const normalizedRole = (role || "").toUpperCase() === "SUPER_ADMIN" ? "ADMIN"
+    : (role || "").toUpperCase() === "CLINIC_ADMIN" ? "CLINIC"
+    : (role || "").toUpperCase();
+
   if (loading) return <div className="h-screen flex items-center justify-center">Đang tải hệ thống...</div>;
 
   return (
@@ -27,56 +50,67 @@ function App() {
       <Navbar />
       <div className="container mx-auto p-4 min-h-[calc(100vh-80px)]">
         <Routes>
-          {/* --- ĐIỀU HƯỚNG MẶC ĐỊNH --- */}
-          <Route path="/" element={
-              !token ? <Navigate to="/login" /> : 
-              role === 'SUPER_ADMIN' ? <Navigate to="/admin/dashboard" /> :
-              role === 'CLINIC_ADMIN' ? <Navigate to="/clinic/dashboard" /> :
-              role === 'DOCTOR' ? <Navigate to="/doctor/patients" /> :
-              <Navigate to="/user/dashboard" />
-          } />
+          <Route
+            path="/"
+            element={
+              !token ? <Navigate to="/login" /> :
+              normalizedRole === "ADMIN" ? <Navigate to="/admin/dashboard" /> :
+              normalizedRole === "CLINIC" ? <Navigate to="/clinic/dashboard" /> :
+              normalizedRole === "DOCTOR" ? <Navigate to="/doctor/dashboard" /> :
+              <Navigate to="/user/upload" />
+            }
+          />
 
-          <Route path="/login" element={<ClientLogin />} />
-          <Route path="/register" element={<ClientRegister />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
 
-          {/* --- CÁC TRANG BẢO VỆ --- */}
-          
-          {/* 1. USER */}
-          <Route element={<ProtectedRoute allowedRoles={['USER']} />}>
-            <Route path="/user/dashboard" element={<UserDashboard />} />
-            <Route path="/user/upload" element={<UserUpload />} />
-            {/* Nếu có trang lịch sử, thêm vào đây: <Route path="/user/history" element={<UserHistory />} /> */}
+          {/* USER */}
+          <Route element={<ProtectedRoute allowedRoles={["USER"]} />}>
+            <Route path="/user/upload" element={<Upload />} />
+            <Route path="/user/history" element={<History />} />
+            <Route path="/user/result/:id" element={<Result />} />
+            <Route path="/user/billing" element={<Billing />} />
           </Route>
 
-          {/* 2. DOCTOR */}
-          <Route element={<ProtectedRoute allowedRoles={['DOCTOR']} />}>
+          {/* DOCTOR */}
+          <Route element={<ProtectedRoute allowedRoles={["DOCTOR"]} />}>
+            <Route path="/doctor/dashboard" element={<DoctorDashboard />} />
             <Route path="/doctor/patients" element={<PatientList />} />
-            {/* Redirect dashboard về danh sách bệnh nhân */}
-            <Route path="/doctor/dashboard" element={<Navigate to="/doctor/patients" />} />
+            <Route path="/doctor/trends" element={<DoctorTrends />} />
+            <Route path="/doctor/result/:id" element={<Result />} />
           </Route>
 
-          {/* 3. CLINIC ADMIN */}
-          <Route element={<ProtectedRoute allowedRoles={['CLINIC_ADMIN']} />}>
+          {/* CLINIC */}
+          <Route element={<ProtectedRoute allowedRoles={["CLINIC"]} />}>
             <Route path="/clinic/dashboard" element={<ClinicDashboard />} />
             <Route path="/clinic/doctors" element={<DoctorManager />} />
+            <Route path="/clinic/patients" element={<ClinicPatients />} />
+            <Route path="/clinic/bulk" element={<BulkUpload />} />
+            <Route path="/clinic/billing" element={<Billing />} />
+            <Route path="/clinic/result/:id" element={<Result />} />
           </Route>
 
-          {/* 4. SUPER ADMIN */}
-          <Route element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']} />}>
+          {/* ADMIN */}
+          <Route element={<ProtectedRoute allowedRoles={["ADMIN"]} />}>
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
+            <Route path="/admin/ai-settings" element={<AISettings />} />
+            <Route path="/admin/pricing" element={<PricingManager />} />
+            <Route path="/admin/users" element={<AdminUserManager />} />
+            <Route path="/admin/notification-templates" element={<NotificationTemplates />} />
+            <Route path="/admin/result/:id" element={<Result />} />
           </Route>
 
-          {/* 5. TRANG CHUNG (HỒ SƠ CÁ NHÂN) - Cho phép tất cả Role đã đăng nhập */}
-          <Route element={<ProtectedRoute allowedRoles={['USER', 'DOCTOR', 'CLINIC_ADMIN', 'SUPER_ADMIN']} />}>
-            <Route path="/profile" element={<UserProfile />} />
+          {/* COMMON */}
+          <Route element={<ProtectedRoute allowedRoles={["USER", "DOCTOR", "CLINIC", "ADMIN"]} />}>
+            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/chat/:otherId" element={<ChatPage />} />
+            <Route path="/profile" element={<Profile />} />
           </Route>
 
-          {/* Catch-all */}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>
     </>
   );
 }
-
 export default App;

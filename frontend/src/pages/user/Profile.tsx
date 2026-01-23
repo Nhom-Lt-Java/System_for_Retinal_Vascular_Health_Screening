@@ -1,256 +1,183 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  User, 
-  Mail, 
-  Lock, 
-  Camera, 
-  Save, 
-  Loader2, 
-  CheckCircle,
-  AlertCircle
-} from 'lucide-react';
-import Button from '../../components/Button';
+import { useEffect, useState } from "react";
+import {
+  Box,
+  Button,
+  CircularProgress,
+  Container,
+  Grid,
+  Paper,
+  TextField,
+  Typography,
+  Alert,
+} from "@mui/material";
+import profileApi, { type Profile, type ProfileUpdate } from "../../api/profileApi";
 
-export default function UserProfile() {
-  const [loading, setLoading] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-  
-  const [profile, setProfile] = useState({
-    fullName: '',
-    email: '',
-    avatar: 'https://i.pravatar.cc/300',
-    role: ''
-  });
-
-  const [passwords, setPasswords] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
-  });
-
-  const [showPasswordSection, setShowPasswordSection] = useState(false);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
+export default function ProfilePage() {
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const [p, setP] = useState<Profile | null>(null);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-      const parsedUser = JSON.parse(savedUser);
-      setProfile({
-        fullName: parsedUser.username || 'Người dùng Aura',
-        email: parsedUser.email || 'user@example.com',
-        avatar: parsedUser.avatar || 'https://i.pravatar.cc/300',
-        role: parsedUser.role || 'USER'
-      });
-    }
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const me = await profileApi.getMe();
+        setP(me);
+      } catch (e: any) {
+        setError(e?.response?.data?.message || e?.message || "Không tải được hồ sơ");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setPreviewImage(reader.result as string);
-      reader.readAsDataURL(file);
-    }
+  const updateField = (k: keyof Profile, v: any) => {
+    setP((prev) => (prev ? { ...prev, [k]: v } : prev));
   };
 
-  const handleSaveChanges = (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setErrorMsg('');
-    setSuccessMsg('');
-
-    if (showPasswordSection) {
-      if (passwords.newPassword !== passwords.confirmPassword) {
-        setErrorMsg('Mật khẩu mới không khớp!');
-        setLoading(false);
-        return;
-      }
-      if (passwords.newPassword.length < 6) {
-        setErrorMsg('Mật khẩu mới phải có ít nhất 6 ký tự!');
-        setLoading(false);
-        return;
-      }
-    }
-
-    setTimeout(() => {
-      const updatedUser = {
-        username: profile.fullName,
-        email: profile.email,
-        role: profile.role,
-        avatar: previewImage || profile.avatar
+  const onSave = async () => {
+    if (!p) return;
+    setSaving(true);
+    setOk(null);
+    setError(null);
+    try {
+      const payload: ProfileUpdate = {
+        email: p.email ?? null,
+        phone: p.phone ?? null,
+        firstName: p.firstName ?? null,
+        lastName: p.lastName ?? null,
+        fullName: p.fullName ?? null,
+        address: p.address ?? null,
+        dateOfBirth: p.dateOfBirth ?? null,
+        gender: p.gender ?? null,
+        emergencyContact: p.emergencyContact ?? null,
+        // medicalInfo: p.medicalInfo ?? null,
       };
-      
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-      
-      if (previewImage) {
-        setProfile(prev => ({ ...prev, avatar: previewImage }));
-        setPreviewImage(null);
-      }
-
-      setPasswords({ currentPassword: '', newPassword: '', confirmPassword: '' });
-      setShowPasswordSection(false);
-      setSuccessMsg('Cập nhật hồ sơ thành công!');
-      setLoading(false);
-      setTimeout(() => setSuccessMsg(''), 3000);
-    }, 1000);
+      const saved = await profileApi.updateMe(payload);
+      setP(saved);
+      setOk("Đã lưu hồ sơ");
+    } catch (e: any) {
+      setError(e?.response?.data?.message || e?.message || "Lưu thất bại");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Hồ sơ cá nhân</h1>
+    <Container maxWidth="md" sx={{ mt: 4 }}>
+      <Typography variant="h4" gutterBottom>
+        Hồ sơ cá nhân
+      </Typography>
 
-        <form onSubmit={handleSaveChanges} className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          
-          {/* CỘT TRÁI: AVATAR */}
-          <div className="md:col-span-1">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
-              <div className="relative inline-block mb-4 group">
-                <div className="w-40 h-40 rounded-full overflow-hidden border-4 border-white shadow-lg mx-auto">
-                  <img 
-                    src={previewImage || profile.avatar} 
-                    alt="Avatar" 
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                {/* Sửa lỗi 1: Liên kết Label và Input rõ ràng */}
-                <label 
-                  htmlFor="avatar-upload" 
-                  className="absolute bottom-2 right-2 bg-blue-600 text-white p-2 rounded-full cursor-pointer hover:bg-blue-700 transition shadow-md"
-                  title="Tải ảnh đại diện mới"
-                >
-                  <Camera size={20} />
-                </label>
-                <input 
-                  id="avatar-upload" 
-                  type="file" 
-                  accept="image/*" 
-                  className="hidden" 
-                  onChange={handleImageChange}
-                  aria-label="Tải ảnh đại diện" 
-                />
-              </div>
-              
-              <h2 className="text-xl font-bold text-gray-800">{profile.fullName}</h2>
-              <p className="text-gray-500 text-sm mb-4">{profile.role}</p>
-            </div>
-          </div>
+      {loading && (
+        <Box sx={{ display: "flex", justifyContent: "center", mt: 4 }}>
+          <CircularProgress />
+        </Box>
+      )}
 
-          {/* CỘT PHẢI: FORM THÔNG TIN */}
-          <div className="md:col-span-2">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-              <div className="flex items-center gap-2 mb-6 border-b pb-4">
-                <User className="text-blue-600" />
-                <h3 className="text-lg font-bold text-gray-800">Thông tin cơ bản</h3>
-              </div>
+      {!loading && error && <Alert severity="error">{error}</Alert>}
+      {!loading && ok && <Alert severity="success">{ok}</Alert>}
 
-              {successMsg && (
-                <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-xl flex items-center gap-2 border border-green-100">
-                  <CheckCircle size={20} /> {successMsg}
-                </div>
-              )}
-              {errorMsg && (
-                <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-xl flex items-center gap-2 border border-red-100">
-                  <AlertCircle size={20} /> {errorMsg}
-                </div>
-              )}
+      {!loading && p && (
+        <Paper sx={{ p: 3, mt: 2 }}>
+          <Typography variant="body2" sx={{ mb: 2, opacity: 0.8 }}>
+            Tài khoản: <b>{p.username}</b> • Role: <b>{p.role}</b> • Trạng thái:{" "}
+            <b>{p.enabled ? "Active" : "Disabled"}</b>
+          </Typography>
 
-              <div className="space-y-6">
-                <div>
-                  <label htmlFor="fullname" className="block text-sm font-medium text-gray-700 mb-2">Họ và tên</label>
-                  <input 
-                    id="fullname"
-                    type="text" 
-                    value={profile.fullName}
-                    onChange={(e) => setProfile({...profile, fullName: e.target.value})}
-                    className="w-full p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-                    placeholder="Nhập họ tên của bạn"
-                  />
-                </div>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Email"
+                value={p.email || ""}
+                onChange={(e) => updateField("email", e.target.value)}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Số điện thoại"
+                value={p.phone || ""}
+                onChange={(e) => updateField("phone", e.target.value)}
+                fullWidth
+              />
+            </Grid>
 
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">Địa chỉ Email</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-3.5 text-gray-400" size={20} />
-                    <input 
-                      id="email"
-                      type="email" 
-                      value={profile.email}
-                      onChange={(e) => setProfile({...profile, email: e.target.value})}
-                      className="w-full pl-10 p-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition"
-                      placeholder="example@gmail.com"
-                    />
-                  </div>
-                </div>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Họ"
+                value={p.lastName || ""}
+                onChange={(e) => updateField("lastName", e.target.value)}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Tên"
+                value={p.firstName || ""}
+                onChange={(e) => updateField("firstName", e.target.value)}
+                fullWidth
+              />
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Họ và tên"
+                value={p.fullName || ""}
+                onChange={(e) => updateField("fullName", e.target.value)}
+                fullWidth
+              />
+            </Grid>
 
-                <div className="pt-4 border-t border-gray-100">
-                  <button 
-                    type="button"
-                    onClick={() => setShowPasswordSection(!showPasswordSection)}
-                    className="text-blue-600 text-sm font-bold hover:underline flex items-center gap-1"
-                  >
-                    <Lock size={16} /> {showPasswordSection ? 'Hủy đổi mật khẩu' : 'Đổi mật khẩu'}
-                  </button>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Ngày sinh"
+                type="date"
+                value={p.dateOfBirth || ""}
+                onChange={(e) => updateField("dateOfBirth", e.target.value)}
+                fullWidth
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Giới tính"
+                value={p.gender || ""}
+                onChange={(e) => updateField("gender", e.target.value)}
+                fullWidth
+                placeholder="Male / Female / Other"
+              />
+            </Grid>
 
-                  {showPasswordSection && (
-                    <div className="mt-6 space-y-4 bg-gray-50 p-6 rounded-xl">
-                      {/* Sửa lỗi 2: Thêm id và htmlFor cho phần mật khẩu */}
-                      <div>
-                        <label htmlFor="current-pass" className="block text-xs font-bold text-gray-500 uppercase mb-1">Mật khẩu hiện tại</label>
-                        <input 
-                          id="current-pass"
-                          type="password" 
-                          value={passwords.currentPassword}
-                          onChange={(e) => setPasswords({...passwords, currentPassword: e.target.value})}
-                          className="w-full p-3 bg-white border border-gray-200 rounded-lg focus:border-blue-500 outline-none"
-                          placeholder="Nhập mật khẩu hiện tại"
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label htmlFor="new-pass" className="block text-xs font-bold text-gray-500 uppercase mb-1">Mật khẩu mới</label>
-                          <input 
-                            id="new-pass"
-                            type="password" 
-                            value={passwords.newPassword}
-                            onChange={(e) => setPasswords({...passwords, newPassword: e.target.value})}
-                            className="w-full p-3 bg-white border border-gray-200 rounded-lg focus:border-blue-500 outline-none"
-                            placeholder="Nhập mật khẩu mới"
-                          />
-                        </div>
-                        <div>
-                          <label htmlFor="confirm-pass" className="block text-xs font-bold text-gray-500 uppercase mb-1">Xác nhận mật khẩu</label>
-                          <input 
-                            id="confirm-pass"
-                            type="password" 
-                            value={passwords.confirmPassword}
-                            onChange={(e) => setPasswords({...passwords, confirmPassword: e.target.value})}
-                            className="w-full p-3 bg-white border border-gray-200 rounded-lg focus:border-blue-500 outline-none"
-                            placeholder="Nhập lại mật khẩu mới"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+            <Grid item xs={12}>
+              <TextField
+                label="Địa chỉ"
+                value={p.address || ""}
+                onChange={(e) => updateField("address", e.target.value)}
+                fullWidth
+              />
+            </Grid>
 
-                <div className="pt-6 flex justify-end">
-                  <Button type="submit" disabled={loading} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-lg border-none">
-                    {loading ? (
-                      <><Loader2 className="animate-spin mr-2" /> Đang lưu...</>
-                    ) : (
-                      <><Save className="mr-2" size={20} /> Lưu thay đổi</>
-                    )}
-                  </Button>
-                </div>
+            <Grid item xs={12}>
+              <TextField
+                label="Liên hệ khẩn cấp"
+                value={p.emergencyContact || ""}
+                onChange={(e) => updateField("emergencyContact", e.target.value)}
+                fullWidth
+                placeholder="Tên + SĐT"
+              />
+            </Grid>
+          </Grid>
 
-              </div>
-            </div>
-          </div>
-
-        </form>
-      </div>
-    </div>
+          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 3 }}>
+            <Button variant="contained" onClick={onSave} disabled={saving}>
+              {saving ? "Đang lưu..." : "Lưu"}
+            </Button>
+          </Box>
+        </Paper>
+      )}
+    </Container>
   );
 }

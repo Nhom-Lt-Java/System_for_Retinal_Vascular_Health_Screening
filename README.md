@@ -1,105 +1,104 @@
+# AURA – System for Retinal Vascular Health Screening (SP26SE025)
 
-# AURA Retinal Screening - Technical Flow Diagrams
+## 1) Chạy nhanh bằng Docker Compose
 
-Tài liệu này mô tả kiến trúc và luồng dữ liệu chính của hệ thống sàng lọc võng mạc AURA, tập trung vào giao tiếp giữa các thành phần Front-end (React), Back-end (Java/Spring), và AI Microservice (Python/ML Model).
+Yêu cầu: **Docker + Docker Compose**.
 
-## 1. Luồng: User Upload Ảnh & Chạy AI
-
-Luồng này mô tả quy trình từ khi người dùng tải ảnh lên cho đến khi nhận được kết quả phân tích tự động từ AI.
-
-```text
-User
-  |
-  | (1) Chọn ảnh, nhấn Upload & Analyze
-  v
-Frontend (React)
-  |
-  | (2) POST /api/analyses (multipart/form-data)
-  v
-Backend Controller (Java/Spring)
-  |
-  | (3) validate request, map DTO
-  | (4) gọi analysisService.createAndRequestAI(dto)
-  v
-Service (AnalysisService)
-  |
-  | (5) repository.save(analysis PENDING)
-  v
-Repository (AnalysisRepository)
-  |
-  | (6) INSERT vào DB (analysis, status=PENDING)
-  v
-Database (PostgreSQL)
-  ^
-  |
-Service (tiếp)
-  |
-  | (7) Upload ảnh → Cloud Storage
-  | (8) Gửi request → AI Core (HTTP)
-  v
-AI Core Microservice (Python)
-  |
-  | (9) Chạy model, tạo result + heatmap
-  | (10) Gửi callback POST /api/ai-callback
-  v
-Backend Controller (AI Callback)
-  |
-  | (11) gọi analysisService.updateWithAIResult(...)
-  v
-Service
-  |
-  | (12) repository.update(analysis COMPLETED + store result)
-  v
-Repository → Database
-  |
-  | (13) FE polling GET /api/analyses/{id}
-  v
-Frontend hiển thị kết quả cho User
+```bash
+cd ah
+docker compose up -d --build
 ```
 
-## 2. Luồng: Doctor Review (Đánh giá của Bác sĩ)
-Luồng này mô tả quá trình bác sĩ truy cập, xem xét chi tiết kết quả AI, và đưa ra chẩn đoán cuối cùng.
-```text
-Doctor
-  |
-  | (1) Mở danh sách phân tích
-  v
-Frontend (Doctor Portal)
-  |
-  | (2) GET /api/doctor/analyses?filters
-  v
-Backend Controller (Doctor)
-  |
-  | (3) doctorAnalysisService.getAnalyses()
-  v
-Service
-  |
-  | (4) analysisRepository.findByClinicOrDoctor(...)
-  v
-Repository → DB
-  |
-  | (5) Trả kết quả danh sách → FE
-  v
-Doctor chọn 1 analysis
-  |
-  | (6) GET /api/doctor/analyses/{id}
-  v
-Controller → Service → Repository → DB
-  |
-  | (7) Trả chi tiết analysis + kết quả AI
-  v
-Frontend
-  |
-  | (8) Doctor nhập chẩn đoán, note, confirm/override
-  | (9) POST /api/doctor/analyses/{id}/review
-  v
-Backend Controller
-  |
-  | (10) doctorAnalysisService.saveReview()
-  v
-Service → Repository → DB
-  |
-  | (11) Cập nhật trạng thái review
-  v
-User có thể xem doctor review qua FE
+Sau khi lên container:
+- Frontend (React): http://localhost:5173
+- Backend (Spring Boot): http://localhost:8080
+- AI Core (FastAPI): http://localhost:8000
+- MinIO Console: http://localhost:9001 (user/pass: minioadmin / minioadmin123)
+- PgAdmin: http://localhost:5050 (email/pass: admin@gmail.com / 123456)
+
+DB Postgres:
+- host: localhost
+- port: 5432
+- db: retinal_system
+- user: postgres
+- pass: 123456
+
+## 2) Tài khoản demo
+
+Backend có seeding admin + gói dịch vụ mẫu:
+- **Admin**: `admin` / `admin123`
+
+Bạn có thể tạo thêm:
+- **Bệnh nhân (USER)**: đăng ký tab **Bệnh nhân**
+- **Phòng khám (CLINIC)**: đăng ký tab **Phòng khám** (status mặc định `PENDING`)
+
+Admin cần vào **Quản trị → Admin Dashboard** để **Approve** clinic.
+
+## 3) Luồng demo theo FR/NFR
+
+### 3.1 Payment demo (Mode 1 – ghi DB thật)
+1. USER/CLINIC đăng nhập
+2. Vào **Gói dịch vụ** → mua gói (ghi DB: `order_transactions`, `user_credit`)
+3. Xem **Lịch sử thanh toán** ngay trong trang.
+
+### 3.2 Upload & phân tích (async queue)
+- USER: **Phân tích ảnh** → upload 1 ảnh → hệ thống tạo **job** (queue) và xử lý nền.
+- CLINIC: **Bulk upload** → chọn ≥100 ảnh (có thể) → tạo nhiều job.
+
+### 3.3 Kết quả + export PDF/CSV
+- Vào **Result** của 1 analysis
+- Export:
+  - PDF: `/api/reports/pdf/{analysisId}`
+  - CSV: `/api/reports/csv/{analysisId}`
+
+### 3.4 Doctor review/validate
+- Clinic tạo doctor trong **Bác sĩ**
+- Clinic gán doctor cho patient trong **Bệnh nhân**
+- Doctor đăng nhập → danh sách bệnh nhân → mở result → nhập kết luận/notes → **Duyệt**
+
+### 3.5 Notifications + Chat
+- Khi analysis hoàn tất hoặc fail: tạo notification trong DB
+- Trang **Thông báo** đọc/đánh dấu đã đọc
+- Chat patient–doctor: lưu DB (messages)
+
+### 3.6 Admin modules
+- Admin Dashboard: tổng quan hệ thống, clinic pending, audit logs
+- AI settings: model_version + thresholds (lưu DB)
+- Pricing: CRUD gói dịch vụ
+
+## 4) Ghi chú kỹ thuật
+
+- RBAC: ADMIN / CLINIC / DOCTOR / USER
+- Tất cả dữ liệu lấy từ PostgreSQL (không mock)
+- Bulk upload: async queue (table `analysis_jobs`) + scheduler worker
+- Storage ảnh: MinIO (S3 compatible)
+
+## 5) Google Login (FR-1)
+Hệ thống hỗ trợ đăng nhập Google bằng **Google Identity Services ID token**.
+
+Thiết lập biến môi trường (tùy chọn):
+- Backend: `GOOGLE_CLIENT_ID`
+- Frontend: `VITE_GOOGLE_CLIENT_ID`
+
+Ví dụ (bash):
+```bash
+export GOOGLE_CLIENT_ID="YOUR_GOOGLE_OAUTH_CLIENT_ID"
+export VITE_GOOGLE_CLIENT_ID="YOUR_GOOGLE_OAUTH_CLIENT_ID"
+docker compose up -d --build
 ```
+
+## 6) Tài liệu nộp đồ án
+Xem thư mục `docs/`:
+- `01_SRS.md`
+- `02_Architecture.md`
+- `03_Detail_Design_UML.md`
+- `04_Test_Plan.md`
+- `05_Installation_Guide.md`
+- `06_User_Manual.md`
+
+## 7) Backup dữ liệu (NFR-6)
+```bash
+./scripts/backup_postgres.sh
+./scripts/restore_postgres.sh ./backups/retinal_system_YYYYMMDD_HHMMSS.sql
+```
+

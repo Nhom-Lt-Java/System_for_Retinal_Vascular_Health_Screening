@@ -1,7 +1,11 @@
 package com.aura.retinal.repository;
 
 import com.aura.retinal.entity.Clinic;
+import com.aura.retinal.entity.ClinicStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface ClinicRepository  extends JpaRepository<Clinic, Long> {
+import java.util.List;
+
+public interface ClinicRepository extends JpaRepository<Clinic, Long> {
+    List<Clinic> findByStatus(ClinicStatus status);
 }

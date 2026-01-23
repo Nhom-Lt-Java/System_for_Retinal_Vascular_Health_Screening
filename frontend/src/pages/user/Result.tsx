@@ -1,126 +1,241 @@
-import React, { useState } from 'react';
-import { Container, Grid, Paper, Typography, Box, Button, Chip, Divider, TextField, Alert } from '@mui/material';
-import { useAuth } from '../../context/AuthContext';
-import SaveIcon from '@mui/icons-material/Save';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import { useEffect, useState } from "react";
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Container,
+  Divider,
+  Grid,
+  Typography,
+  Alert,
+  Paper,
+} from "@mui/material";
+import { useParams, Link as RouterLink } from "react-router-dom";
+import { getAnalysis } from "../../api/analysisApi";
+import axiosClient from "../../api/axiosClient";
 
-export default function Result() {
-  const { user } = useAuth(); // Lấy role để phân quyền
-  const isDoctor = user?.role === 'doctor';
+type AnalysisResult = {
+  id: string;
+  status: string;
+  predLabel?: string | null;
+  predConf?: number | null;
+  riskLevel?: string | null;
+  advice?: string[] | null;
+  originalUrl?: string | null;
+  overlayUrl?: string | null;
+  maskUrl?: string | null;
+  heatmapUrl?: string | null;
+  heatmapOverlayUrl?: string | null;
+  errorMessage?: string | null;
+};
 
-  // Dữ liệu giả lập từ AI (Mock Data)
-  const mockResult = {
-    imageUrl: 'https://via.placeholder.com/400', // Thay bằng ảnh võng mạc thật
-    heatmapUrl: 'https://via.placeholder.com/400/ff0000/ffffff?text=Heatmap', // Ảnh vùng bệnh
-    aiDiagnosis: 'Mild DR (Bệnh võng mạc tiểu đường nhẹ)',
-    confidence: 87.5, // Độ tin cậy
-    recommendation: 'Bạn nên đi khám chuyên sâu trong vòng 1 tháng tới để kiểm tra kỹ hơn.'
+function riskChip(risk?: string | null) {
+  const r = (risk || "").toUpperCase();
+  if (!r) return null;
+  const label =
+    r === "HIGH" ? "Nguy cơ cao" : r === "MED" ? "Nguy cơ" : r === "LOW" ? "Thấp" : "Chất lượng thấp";
+  return <Chip label={label} />;
+}
+
+export default function ResultPage() {
+  const { id } = useParams<{ id: string }>();
+  const [loading, setLoading] = useState(true);
+  const [polling, setPolling] = useState(false);
+  const [data, setData] = useState<AnalysisResult | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let stopped = false;
+    let timer: any = null;
+
+    const fetchOnce = async (isFirst = false) => {
+      if (!id) return;
+      try {
+        if (isFirst) setLoading(true);
+        const res = await getAnalysis(id);
+        if (stopped) return;
+        setData(res as any);
+        setErr(null);
+
+        const st = String((res as any)?.status || "").toUpperCase();
+        const shouldPoll = st === "QUEUED" || st === "RUNNING";
+        setPolling(shouldPoll);
+        if (shouldPoll) {
+          timer = setTimeout(() => fetchOnce(false), 2000);
+        }
+      } catch (e: any) {
+        if (stopped) return;
+        setErr(e?.response?.data?.message || e?.message || "Load failed");
+        setPolling(false);
+      } finally {
+        if (!stopped) setLoading(false);
+      }
+    };
+
+    fetchOnce(true);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [id]);
+
+  if (loading) {
+    return (
+      <Container sx={{ py: 4 }}>
+        <Box display="flex" justifyContent="center">
+          <CircularProgress />
+        </Box>
+      </Container>
+    );
+  }
+
+  if (err) {
+    return (
+      <Container sx={{ py: 4 }}>
+        <Alert severity="error">{err}</Alert>
+      </Container>
+    );
+  }
+
+  if (!data) return null;
+
+  const canDownload = data.status === "COMPLETED" || data.status === "REVIEWED";
+
+  const downloadPdf = async () => {
+    try {
+      const res = await axiosClient.get(`/reports/pdf/${data.id}`, { responseType: "blob" });
+      const blob = new Blob([res.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `aura_report_${data.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || "Không tải được PDF");
+    }
   };
 
-  // State dành cho bác sĩ chỉnh sửa (FR-15, FR-16)
-  const [doctorNote, setDoctorNote] = useState('');
-  const [finalConclusion, setFinalConclusion] = useState(mockResult.aiDiagnosis);
-  const [isSaved, setIsSaved] = useState(false);
-
-  const handleSave = () => {
-    // Gọi API lưu kết luận bác sĩ
-    console.log("Lưu kết quả:", { finalConclusion, doctorNote });
-    setIsSaved(true);
+  const downloadCsv = async () => {
+    try {
+      const res = await axiosClient.get(`/reports/csv/${data.id}`, { responseType: "blob" });
+      const blob = new Blob([res.data], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `aura_report_${data.id}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || "Không tải được CSV");
+    }
   };
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Grid container spacing={4}>
-        {/* Cột Trái: Hiển thị Ảnh & Heatmap (FR-4) */}
-        <Grid item xs={12} md={6}>
-          <Paper elevation={3} sx={{ p: 2, borderRadius: 3, textAlign: 'center' }}>
-            <Typography variant="h6" gutterBottom fontWeight="bold">Ảnh Phân Tích</Typography>
-            <Box sx={{ position: 'relative', borderRadius: 2, overflow: 'hidden' }}>
-              <img src={mockResult.imageUrl} alt="Original" style={{ width: '100%', display: 'block' }} />
-              {/* Giả lập lớp phủ Heatmap khi hover hoặc toggle */}
-              <Box sx={{ 
-                position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
-                opacity: 0.4, backgroundImage: `url(${mockResult.heatmapUrl})`, backgroundSize: 'cover' 
-              }} />
-            </Box>
-            <Typography variant="caption" color="textSecondary" sx={{ mt: 1, display: 'block' }}>
-              *Vùng đỏ hiển thị các tổn thương nghi ngờ
-            </Typography>
-          </Paper>
+    <Container sx={{ py: 4 }}>
+      <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+        <Typography variant="h5">Kết quả phân tích</Typography>
+        <Button component={RouterLink} to="/user/history" variant="outlined">
+          Lịch sử
+        </Button>
+      </Box>
+
+      {polling && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Hệ thống đang phân tích (trạng thái: {data.status}). Trang sẽ tự cập nhật...
+        </Alert>
+      )}
+
+      {data.status === "FAILED" && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Phân tích thất bại: {data.errorMessage || "Unknown error"}
+        </Alert>
+      )}
+
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="subtitle2" color="text.secondary">
+                Nhãn dự đoán
+              </Typography>
+              <Typography variant="h6">{data.predLabel || "—"}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Độ tin cậy: {data.predConf != null ? (data.predConf * 100).toFixed(1) + "%" : "—"}
+              </Typography>
+              <Box mt={1}>{riskChip(data.riskLevel)}</Box>
+
+              <Divider sx={{ my: 2 }} />
+
+              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                Khuyến nghị
+              </Typography>
+              {data.advice && data.advice.length > 0 ? (
+                <Box component="ul" sx={{ pl: 2, m: 0 }}>
+                  {data.advice.map((a, idx) => (
+                    <li key={idx}>
+                      <Typography variant="body2">{a}</Typography>
+                    </li>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Chưa có khuyến nghị.
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
         </Grid>
 
-        {/* Cột Phải: Kết quả & Thao tác (FR-3, FR-5, FR-14, FR-15, FR-16) */}
-        <Grid item xs={12} md={6}>
-          <Paper elevation={3} sx={{ p: 4, borderRadius: 3, height: '100%' }}>
-            
-            {/* 1. Kết quả AI */}
-            <Typography variant="h5" fontWeight="bold" color="primary" gutterBottom>
-              Kết quả AI chẩn đoán
+        <Grid item xs={12} md={8}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="subtitle1" gutterBottom>
+              Hình ảnh & chú thích
             </Typography>
-            <Box sx={{ mb: 3 }}>
-              <Chip 
-                label={`${mockResult.confidence}% Tin cậy`} 
-                color={mockResult.confidence > 80 ? "success" : "warning"} 
-                sx={{ mb: 1 }} 
-              />
-              <Typography variant="h4" fontWeight="bold">
-                {mockResult.aiDiagnosis}
-              </Typography>
+            <Grid container spacing={2}>
+              {data.originalUrl && (
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption">Ảnh gốc</Typography>
+                  <Box component="img" src={data.originalUrl} sx={{ width: "100%", borderRadius: 1 }} />
+                </Grid>
+              )}
+              {data.overlayUrl && (
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption">Overlay mạch máu</Typography>
+                  <Box component="img" src={data.overlayUrl} sx={{ width: "100%", borderRadius: 1 }} />
+                </Grid>
+              )}
+              {data.maskUrl && (
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption">Mask</Typography>
+                  <Box component="img" src={data.maskUrl} sx={{ width: "100%", borderRadius: 1 }} />
+                </Grid>
+              )}
+              {data.heatmapOverlayUrl && (
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="caption">Heatmap (giải thích)</Typography>
+                  <Box component="img" src={data.heatmapOverlayUrl} sx={{ width: "100%", borderRadius: 1 }} />
+                </Grid>
+              )}
+            </Grid>
+
+            <Box mt={2}>
+              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                <Button variant="contained" disabled={!canDownload} onClick={downloadPdf}>
+                  Tải PDF
+                </Button>
+                <Button variant="outlined" disabled={!canDownload} onClick={downloadCsv}>
+                  Tải CSV
+                </Button>
+              </Box>
             </Box>
-
-            <Divider sx={{ my: 3 }} />
-
-            {/* 2. Phần hiển thị khác nhau dựa trên Role */}
-            {isDoctor ? (
-              // --- GIAO DIỆN BÁC SĨ (FR-15, FR-16) ---
-              <Box>
-                <Typography variant="h6" gutterBottom fontWeight="bold">👨‍⚕️ Kết luận chuyên môn</Typography>
-                
-                <TextField
-                  fullWidth label="Chẩn đoán cuối cùng"
-                  value={finalConclusion}
-                  onChange={(e) => setFinalConclusion(e.target.value)}
-                  margin="normal"
-                  helperText="Bác sĩ có thể sửa lại kết quả của AI nếu thấy sai."
-                />
-                
-                <TextField
-                  fullWidth multiline rows={4}
-                  label="Ghi chú điều trị / Lời dặn"
-                  placeholder="Nhập phác đồ điều trị hoặc lời khuyên..."
-                  value={doctorNote}
-                  onChange={(e) => setDoctorNote(e.target.value)}
-                  margin="normal"
-                />
-
-                <Button 
-                  variant="contained" size="large" 
-                  startIcon={isSaved ? <CheckCircleIcon /> : <SaveIcon />}
-                  color={isSaved ? "success" : "primary"}
-                  onClick={handleSave}
-                  sx={{ mt: 2 }}
-                >
-                  {isSaved ? "Đã lưu hồ sơ" : "Xác nhận kết quả"}
-                </Button>
-              </Box>
-            ) : (
-              // --- GIAO DIỆN BỆNH NHÂN (FR-5) ---
-              <Box>
-                <Typography variant="h6" gutterBottom fontWeight="bold">💡 Khuyến nghị sức khỏe</Typography>
-                <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
-                  {mockResult.recommendation}
-                </Alert>
-                <Typography variant="body2" color="textSecondary" paragraph>
-                  Kết quả này được tạo bởi AI và chỉ mang tính chất tham khảo. 
-                  Vui lòng chờ xác nhận cuối cùng từ bác sĩ chuyên khoa.
-                </Typography>
-                
-                <Button variant="outlined" fullWidth onClick={() => alert("Đã gửi yêu cầu chat!")}>
-                  Hỏi bác sĩ ngay
-                </Button>
-              </Box>
-            )}
-
           </Paper>
         </Grid>
       </Grid>

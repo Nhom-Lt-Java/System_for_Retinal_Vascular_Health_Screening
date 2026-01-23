@@ -1,4 +1,4 @@
-// src/pages/clinic/ClinicRegister.tsx
+import React from 'react';
 import { TextField, Button, Box, Grid } from '@mui/material';
 import AuthLayout from '../../layouts/AuthLayout';
 import { useNavigate } from 'react-router-dom';
@@ -11,16 +11,14 @@ export default function ClinicRegister() {
       <Box component="form" sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
         <TextField label="Tên phòng khám / Bệnh viện" fullWidth required />
         <TextField label="Địa chỉ" fullWidth required />
-        
         <Grid container spacing={2}>
-           <Grid size={6}>
+           <Grid item xs={6}>
              <TextField label="Email đại diện" type="email" fullWidth required />
            </Grid>
-           <Grid size={6}>
+           <Grid item xs={6}>
              <TextField label="Số điện thoại" fullWidth required />
            </Grid>
         </Grid>
-        
         <TextField label="Số giấy phép kinh doanh" fullWidth required />
         
         <Button 

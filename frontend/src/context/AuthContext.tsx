@@ -11,16 +11,24 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function normalizeRole(role: string | null | undefined): string | null {
+  if (!role) return null;
+  const up = role.toUpperCase();
+  if (up === 'SUPER_ADMIN') return 'ADMIN';
+  if (up === 'CLINIC_ADMIN') return 'CLINIC';
+  return up;
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<any>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-  const [role, setRole] = useState<string | null>(localStorage.getItem('role'));
+  const [role, setRole] = useState<string | null>(normalizeRole(localStorage.getItem('role')));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
     const savedToken = localStorage.getItem('token');
-    const savedRole = localStorage.getItem('role');
+    const savedRole = normalizeRole(localStorage.getItem('role'));
 
     if (savedToken && savedUser && savedRole) {
       setUser(JSON.parse(savedUser));
@@ -31,12 +39,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = (userData: any, userToken: string, userRole: string) => {
+    const normalized = normalizeRole(userRole) || 'USER';
     setToken(userToken);
     setUser(userData);
-    setRole(userRole);
+    setRole(normalized);
     localStorage.setItem('token', userToken);
     localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('role', userRole);
+    localStorage.setItem('role', normalized);
   };
 
   const logout = () => {

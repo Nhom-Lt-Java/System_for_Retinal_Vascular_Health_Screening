@@ -6,11 +6,7 @@ public class SignupRequest {
     private String password;
     private String fullName;
     private String role;
-    // Các trường mở rộng cho Clinic (tùy chọn)
-    private String clinicName;
-    private String address;
 
-    // Getters & Setters
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
 
@@ -25,10 +21,4 @@ public class SignupRequest {
 
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
-
-    public String getClinicName() { return clinicName; }
-    public void setClinicName(String clinicName) { this.clinicName = clinicName; }
-
-    public String getAddress() { return address; }
-    public void setAddress(String address) { this.address = address; }
 }

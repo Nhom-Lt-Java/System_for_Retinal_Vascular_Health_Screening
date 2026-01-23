@@ -18,6 +18,12 @@ public class UserCredit {
     private Integer remainingCredits;
     private Integer totalUsed;
 
+    @PrePersist
+    protected void onCreate() {
+        if (remainingCredits == null) remainingCredits = 0;
+        if (totalUsed == null) totalUsed = 0;
+    }
+
     public UserCredit() {}
     
     public UserCredit(User user) {

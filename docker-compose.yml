@@ -1,18 +1,15 @@
 services:
   postgres:
-    image: postgres:16
+    image: postgres:15-alpine
     container_name: aura_postgres
     restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123456
       POSTGRES_DB: retinal_system
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks:
-      - aura_network
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [aura_network]
 
   pgadmin:
     image: dpage/pgadmin4
@@ -21,32 +18,44 @@ services:
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@gmail.com
       PGADMIN_DEFAULT_PASSWORD: 123456
-    depends_on:
-      - postgres
-    ports:
-      - "5050:80"
-    volumes:
-      - pgadmin-data:/var/lib/pgadmin
-    networks:
-      - aura_network
+    depends_on: [postgres]
+    ports: ["5050:80"]
+    volumes: [pgadmin-data:/var/lib/pgadmin]
+    networks: [aura_network]
 
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: aura_backend
+  minio:
+    image: minio/minio
+    container_name: aura_minio
+    command: server /data --console-address ":9001"
     restart: always
-    depends_on:
-      - postgres
-      - ai-core
-    ports:
-      - "8080:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retinal_system
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: 123456
-    networks:
-      - aura_network
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks: [aura_network]
+
+  minio-init:
+    image: minio/mc
+    container_name: aura_minio_init
+    depends_on: [minio]
+    entrypoint: >
+      /bin/sh -c "
+      set -e;
+      echo 'Waiting for MinIO...';
+      until mc alias set local http://minio:9000 minioadmin minioadmin123; do
+        echo 'MinIO not ready yet, retry in 2s...';
+        sleep 2;
+      done;
+      mc mb -p local/aura || true;
+      mc anonymous set download local/aura || true;
+      echo 'MinIO init done';
+      "
+    networks: [aura_network]
+
 
   ai-core:
     build:
@@ -54,26 +63,65 @@ services:
       dockerfile: Dockerfile
     container_name: aura_ai_core
     restart: always
-    ports:
-      - "8000:8000"
-    networks:
-      - aura_network
+    depends_on: [minio, minio-init]
+    ports: ["8000:8000"]
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: aura
+      MINIO_PREFIX: analyses
+      # (tùy) chỉnh đường dẫn ckpt
+      CLS_CKPT: artifacts/models/disease_cls_rgb.pt
+      VESSEL_CKPT: artifacts/models/b_unet.pt
+    volumes:
+      # bạn đặt weights vào ./ai-core/artifacts/models/
+      - ./ai-core/artifacts/models:/app/artifacts/models:ro
+      - ./ai-core/artifacts/api_outputs:/app/artifacts/api_outputs
+    networks: [aura_network]
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aura_backend
+    restart: always
+    depends_on: [postgres, ai-core, minio]
+    ports: ["8080:8080"]
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/retinal_system
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: 123456
+
+      AI_CORE_BASE_URL: http://ai-core:8000
+
+      MINIO_INTERNAL_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: http://localhost:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: aura
+
+      # Google login (optional)
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    networks: [aura_network]
 
   frontend:
     build:
       context: ./frontend
     container_name: aura_frontend
     restart: always
-    depends_on:
-      - backend
-    ports:
-      - "5173:5173"
-    networks:
-      - aura_network
+    depends_on: [backend]
+    ports: ["5173:5173"]
+    environment:
+      VITE_API_URL: http://localhost:8080
+      # Google login (optional)
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+    networks: [aura_network]
 
 volumes:
   pgdata:
   pgadmin-data:
+  minio-data:
 
 networks:
   aura_network:
