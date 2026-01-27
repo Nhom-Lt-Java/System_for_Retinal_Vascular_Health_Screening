@@ -1,5 +1,9 @@
 # AURA – System for Retinal Vascular Health Screening (SP26SE025)
 
+## Tải 2 file models .pt bỏ vào artifacts/models/
+https://drive.google.com/drive/folders/1byPdAGIDUmRv5rEZf3Jlc5zb-iLsunNt?usp=sharing
+
+
 ## 1) Chạy nhanh bằng Docker Compose
 
 Yêu cầu: **Docker + Docker Compose**.
