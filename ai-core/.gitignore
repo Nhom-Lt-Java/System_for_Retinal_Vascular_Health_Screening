@@ -1,4 +1,9 @@
-ml/
+ml/*
+
+# But keep ml/models
+!ml/
+!ml/models/
+!ml/models/**
 data/
 datasets/
 runs/
