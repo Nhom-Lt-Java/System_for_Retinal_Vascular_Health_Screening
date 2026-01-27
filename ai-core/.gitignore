@@ -16,9 +16,19 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 .env
-artifacts/*
+# ignore all artifacts
+artifacts/**
+
+# but keep the folder path
+!artifacts/
 !artifacts/models/
+
+# ignore everything inside models
+artifacts/models/**
+
+# except placeholder
 !artifacts/models/.keep
+
 debug/
 debug_overfit/
 debug_overlay/
