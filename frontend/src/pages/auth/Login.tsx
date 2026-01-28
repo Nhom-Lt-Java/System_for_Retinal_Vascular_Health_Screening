@@ -1,19 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  Container, Paper, TextField, Button, Typography,
-  Box, Tabs, Tab, Alert, InputAdornment, Link as MuiLink
-} from '@mui/material';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import EmailIcon from '@mui/icons-material/Email';
-import LockIcon from '@mui/icons-material/Lock';
 import authApi from '../../api/authApi';
-
-declare global {
-  interface Window {
-    google?: any;
-  }
-}
+import { FaUser, FaLock, FaEye, FaEyeSlash } from 'react-icons/fa';
 
 function normalizeRole(r: string) {
   const up = (r || "").toUpperCase();
@@ -24,181 +13,140 @@ function normalizeRole(r: string) {
 }
 
 export default function Login() {
-  const [roleTab, setRoleTab] = useState(0); // 0: Patient, 1: Doctor (UI only)
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const { login } = useAuth();
   const navigate = useNavigate();
-
-  const googleBtnRef = useRef<HTMLDivElement | null>(null);
-  const [googleError, setGoogleError] = useState<string>("");
-  const roleTabRef = useRef<number>(roleTab);
+  const { login } = useAuth();
+  
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    roleTabRef.current = roleTab;
-  }, [roleTab]);
-
-  useEffect(() => {
-    const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID as string | undefined;
-    if (!clientId) return;
-
-    const g = window.google;
-    if (!g?.accounts?.id || !googleBtnRef.current) return;
-
-    try {
-      g.accounts.id.initialize({
-        client_id: clientId,
-        callback: async (resp: any) => {
-          try {
-            setGoogleError("");
-            const idToken = resp?.credential;
-            if (!idToken) {
-              setGoogleError("Không nhận được Google credential.");
-              return;
-            }
-
-            const res = await authApi.googleLogin(idToken);
-            const token = res.data?.token;
-            const user = res.data?.user || {};
-            const role = normalizeRole(res.data?.role || user.role);
-
-            if (!token) {
-              setGoogleError("Đăng nhập Google thất bại: thiếu token.");
-              return;
-            }
-
-            if (roleTabRef.current === 1 && role !== "DOCTOR") {
-              setGoogleError("Tài khoản Google này không phải Bác sĩ.");
-              return;
-            }
-
-            login(user, token, role);
-
-            if (role === "DOCTOR") navigate("/doctor/dashboard");
-            else if (role === "CLINIC") navigate("/clinic/dashboard");
-            else if (role === "ADMIN") navigate("/admin/dashboard");
-            else navigate("/user/upload");
-
-          } catch (err: any) {
-            setGoogleError(err?.response?.data?.message || "Đăng nhập Google thất bại.");
-          }
-        },
-      });
-
-      // Clear previous button content before rendering (avoid duplicates)
-      googleBtnRef.current.innerHTML = "";
-      g.accounts.id.renderButton(googleBtnRef.current, {
-        theme: "outline",
-        size: "large",
-        width: "100%",
-      });
-    } catch (e) {
-      setGoogleError("Không thể khởi tạo Google Login.");
-    }
-  }, [login, navigate]);
+    localStorage.clear();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
-    if (!email.trim() || !password.trim()) {
-      setError("Vui lòng nhập Email và mật khẩu.");
+    if (!username.trim() || !password.trim()) {
+      setError("Vui lòng nhập đầy đủ thông tin.");
+      setLoading(false);
       return;
     }
 
     try {
-      // backend thường dùng username; ở đây dùng email làm username
-      const res = await authApi.login({ username: email, password });
+      const res = await authApi.login({ username, password });
+      
       const token = res.data?.token;
       const user = res.data?.user || {};
       const role = normalizeRole(res.data?.role || user.role);
 
       if (!token) {
-        setError("Đăng nhập thất bại: thiếu token.");
-        return;
-      }
-
-      // Optional: nếu user đang ở tab Doctor nhưng account không phải DOCTOR → báo lỗi
-      if (roleTab === 1 && role !== "DOCTOR") {
-        setError("Tài khoản này không phải Bác sĩ.");
-        return;
+        throw new Error("Không nhận được xác thực từ hệ thống.");
       }
 
       login(user, token, role);
 
-      if (role === "DOCTOR") navigate("/doctor/dashboard");
+      if (role === "ADMIN") navigate("/admin/dashboard");
       else if (role === "CLINIC") navigate("/clinic/dashboard");
-      else if (role === "ADMIN") navigate("/admin/dashboard");
+      else if (role === "DOCTOR") navigate("/doctor/dashboard");
       else navigate("/user/upload");
 
     } catch (err: any) {
-      setError(err?.response?.data?.message || "Sai tài khoản hoặc mật khẩu.");
+      console.error(err);
+      const msg = err?.response?.data?.message || err?.response?.data || "Tên đăng nhập hoặc mật khẩu không đúng.";
+      setError(typeof msg === 'string' ? msg : "Đăng nhập thất bại.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <Container maxWidth="xs" sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center' }}>
-      <Paper elevation={10} sx={{ p: 4, borderRadius: 4, textAlign: 'center', width: '100%' }}>
-        <Typography variant="h3" fontWeight="bold" color="primary" gutterBottom>AURA</Typography>
-        <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
-          Hệ thống phân tích võng mạc thông minh
-        </Typography>
+    // Sử dụng Tailwind class thay cho inline style để fix warning
+    <div className="min-h-screen flex items-center justify-center bg-cover bg-center bg-[url('https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80')]">
+      <div className="absolute inset-0 bg-blue-900 bg-opacity-40"></div>
 
-        <Tabs value={roleTab} onChange={(_, v) => setRoleTab(v)} variant="fullWidth"
-              sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
-          <Tab label="Bệnh nhân" sx={{ fontWeight: 'bold' }} />
-          <Tab label="Bác sĩ" sx={{ fontWeight: 'bold' }} />
-        </Tabs>
+      <div className="relative z-10 bg-white/90 backdrop-blur-md p-8 rounded-2xl shadow-2xl w-full max-w-md border border-white/20">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-blue-700 mb-2">AURA</h1>
+          <p className="text-gray-600 font-medium">Hệ thống sàng lọc võng mạc</p>
+        </div>
 
-        {error && <Alert severity="error" sx={{ mb: 2, textAlign: 'left', borderRadius: 2 }}>{error}</Alert>}
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 text-sm rounded-lg border border-red-200 text-center animate-pulse">
+            {error}
+          </div>
+        )}
 
-        <form onSubmit={handleLogin} noValidate>
-          <TextField
-            fullWidth label="Email" margin="normal"
-            value={email} onChange={e => setEmail(e.target.value)}
-            InputProps={{ startAdornment: <InputAdornment position="start"><EmailIcon color="action" /></InputAdornment> }}
-          />
-          <TextField
-            fullWidth label="Mật khẩu" type="password" margin="normal"
-            value={password} onChange={e => setPassword(e.target.value)}
-            InputProps={{ startAdornment: <InputAdornment position="start"><LockIcon color="action" /></InputAdornment> }}
-          />
+        <form onSubmit={handleLogin} className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Tên đăng nhập</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                <FaUser />
+              </div>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-300 text-gray-900 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                placeholder="Nhập tên đăng nhập hoặc Email"
+              />
+            </div>
+          </div>
 
-          <Box sx={{ textAlign: 'right', mt: 1 }}>
-            <MuiLink component={Link} to="/forgot-password" variant="body2" sx={{ textDecoration: 'none' }}>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Mật khẩu</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                <FaLock />
+              </div>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-10 pr-12 py-3 bg-gray-50 border border-gray-300 text-gray-900 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-blue-600 cursor-pointer"
+              >
+                {showPassword ? <FaEyeSlash /> : <FaEye />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Link to="/forgot-password" className="text-sm font-semibold text-blue-600 hover:text-blue-800">
               Quên mật khẩu?
-            </MuiLink>
-          </Box>
+            </Link>
+          </div>
 
-          <Button
-            fullWidth variant="contained" size="large" type="submit"
-            sx={{ mt: 3, py: 1.5, borderRadius: 3, fontWeight: 'bold', textTransform: 'none', fontSize: '1rem' }}
+          <button
+            type="submit"
+            disabled={loading}
+            className={`w-full py-3.5 rounded-xl text-white font-bold text-lg shadow-lg transition-all transform hover:-translate-y-1 ${
+              loading 
+                ? 'bg-gray-400 cursor-not-allowed' 
+                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+            }`}
           >
-            Đăng nhập {roleTab === 0 ? "Bệnh nhân" : "Bác sĩ"}
-          </Button>
-
-          {/* Google login (optional) */}
-          {googleError && (
-            <Alert severity="error" sx={{ mt: 2, textAlign: 'left', borderRadius: 2 }}>
-              {googleError}
-            </Alert>
-          )}
-
-          <Box sx={{ mt: 2 }}>
-            <div ref={googleBtnRef} />
-          </Box>
+            {loading ? "Đang xử lý..." : "Đăng Nhập"}
+          </button>
         </form>
 
-        <Box sx={{ mt: 3 }}>
-          <Typography variant="body2" color="textSecondary">
-            Chưa có tài khoản?{' '}
-            <MuiLink component={Link} to="/register" sx={{ fontWeight: 'bold', textDecoration: 'none' }}>
-              Đăng ký ngay
-            </MuiLink>
-          </Typography>
-        </Box>
-      </Paper>
-    </Container>
+        <div className="mt-8 text-center text-gray-600">
+          Chưa có tài khoản?{' '}
+          <Link to="/register" className="font-bold text-blue-700 hover:underline">
+            Đăng ký ngay
+          </Link>
+        </div>
+      </div>
+    </div>
   );
 }

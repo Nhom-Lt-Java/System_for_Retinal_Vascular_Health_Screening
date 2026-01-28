@@ -1,6 +1,5 @@
 package com.aura.retinal.controller;
 
-import com.aura.retinal.dto.auth.AuthResponse;
 import com.aura.retinal.dto.auth.AuthUser;
 import com.aura.retinal.dto.auth.LoginRequest;
 import com.aura.retinal.dto.auth.LoginResponse;
@@ -10,6 +9,7 @@ import com.aura.retinal.repository.UserRepository;
 import com.aura.retinal.service.AuthService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -29,7 +29,7 @@ public class AuthController {
     }
 
     /**
-     * Login (supports both JSON body and legacy query params for compatibility).
+     * API Đăng nhập: Trả về Token để Client lưu vào LocalStorage
      */
     @PostMapping("/login")
     public LoginResponse login(
@@ -37,50 +37,60 @@ public class AuthController {
             @RequestParam(required = false) String username,
             @RequestParam(required = false) String password
     ) {
-        String u = body != null ? body.username() : username;
-        String p = body != null ? body.password() : password;
+        // Ưu tiên lấy từ Body (JSON), nếu không có thì lấy từ Query Param
+        String u = (body != null && body.getUsername() != null) ? body.getUsername() : username;
+        String p = (body != null && body.getPassword() != null) ? body.getPassword() : password;
+
         if (u == null || p == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing username/password");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng nhập tài khoản và mật khẩu");
         }
 
+        // 1. Xác thực user từ DB
         User db = authService.authenticate(u, p);
 
+        // 2. Sinh Token
         String token = authService.login(u, p);
+        
+        // 3. Convert sang DTO để trả về FE
         AuthUser user = toAuthUser(db);
+        
         return new LoginResponse(token, user, user.role());
     }
 
     /**
-     * Register (demo): USER/DOCTOR/CLINIC
+     * API Đăng ký: Chỉ trả về thông báo thành công để FE chuyển hướng
      */
     @PostMapping("/register")
-    public AuthResponse register(@Valid @RequestBody RegisterRequest req) {
-        User u = authService.register(req);
-        String token = authService.login(req.username(), req.password());
-        return new AuthResponse(token, toAuthUser(u));
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest req) {
+        // Gọi service đăng ký (Lưu user vào DB)
+        authService.register(req);
+        
+        // Trả về 200 OK + Message
+        return ResponseEntity.ok(Map.of("message", "Đăng ký thành công! Vui lòng đăng nhập."));
     }
 
     /**
-     * Get current authenticated user
+     * API lấy thông tin User hiện tại (dựa trên Token gửi lên Header)
      */
     @GetMapping("/me")
     public AuthUser me(Authentication auth) {
         if (auth == null || auth.getName() == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Chưa xác thực");
         }
-        User u = userRepo.findByUsername(auth.getName()).orElseThrow();
+        User u = userRepo.findByUsername(auth.getName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng"));
         return toAuthUser(u);
     }
 
+    // Helper: Chuyển đổi Entity User -> DTO AuthUser
     private static AuthUser toAuthUser(User u) {
         Long clinicId = u.getClinic() != null ? u.getClinic().getId() : null;
-
+        
         String fullName = u.getFullName();
         if (fullName == null || fullName.isBlank()) {
             String fn = u.getFirstName() == null ? "" : u.getFirstName().trim();
             String ln = u.getLastName() == null ? "" : u.getLastName().trim();
-            String merged = (fn + " " + ln).trim();
-            fullName = merged.isBlank() ? null : merged;
+            fullName = (fn + " " + ln).trim();
         }
 
         return new AuthUser(
@@ -98,9 +108,6 @@ public class AuthController {
         );
     }
 
-    /**
-     * Simple health for FE
-     */
     @GetMapping("/ping")
     public Map<String, Object> ping() {
         return Map.of("ok", true);

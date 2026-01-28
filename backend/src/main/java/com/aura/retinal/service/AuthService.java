@@ -28,85 +28,101 @@ public class AuthService {
     }
 
     /**
-     * Authenticate with username OR email.
-     * Returns the User if valid, otherwise throws RuntimeException.
+     * Xác thực người dùng (Dùng cho API Login)
      */
     public User authenticate(String identifier, String password) {
         if (identifier == null || identifier.isBlank()) {
-            throw new RuntimeException("Missing username/email");
+            throw new RuntimeException("Tài khoản không được để trống");
         }
 
+        // Tìm user theo username HOẶC email (Để user đăng nhập bằng cái nào cũng được)
         User user = userRepo.findByUsernameOrEmail(identifier, identifier)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("Tài khoản hoặc mật khẩu không đúng"));
 
         if (!user.isEnabled()) {
-            throw new RuntimeException("Account disabled");
+            throw new RuntimeException("Tài khoản đã bị vô hiệu hóa");
         }
 
+        // So khớp mật khẩu đã mã hóa
         if (!encoder.matches(password, user.getPassword())) {
-            throw new RuntimeException("Wrong password");
+            throw new RuntimeException("Tài khoản hoặc mật khẩu không đúng");
         }
 
-        // Demo rule: if clinic is not approved, block CLINIC and DOCTOR login
+        // --- LOGIC CHECK PHÒNG KHÁM (BẬT LẠI KHI CẦN) ---
+        /*
         if ((user.getRole() == Role.CLINIC || user.getRole() == Role.DOCTOR)
                 && user.getClinic() != null
                 && user.getClinic().getStatus() != ClinicStatus.APPROVED) {
-            throw new RuntimeException("Clinic not approved");
+            throw new RuntimeException("Phòng khám của bạn chưa được duyệt.");
         }
+        */
+        // ------------------------------------------------
 
         return user;
     }
 
+    /**
+     * Sinh JWT Token sau khi xác thực thành công
+     */
     public String login(String identifier, String password) {
+        // authenticate() sẽ ném lỗi nếu login sai, nên ở đây chắc chắn user đúng
         User user = authenticate(identifier, password);
-        // JWT subject uses username for consistency
         return jwtUtil.generateToken(user.getUsername());
     }
 
+    /**
+     * Đăng ký tài khoản mới
+     */
     @Transactional
     public User register(RegisterRequest req) {
+        // 1. Kiểm tra trùng username
         if (userRepo.findByUsername(req.username()).isPresent()) {
-            throw new RuntimeException("Username already exists");
+            throw new RuntimeException("Tên đăng nhập đã tồn tại");
         }
 
-        if (req.email() != null && !req.email().isBlank()) {
-            // quick pre-check for nicer message; DB constraint is the source of truth
-            userRepo.findByUsernameOrEmail(req.email(), req.email()).ifPresent(u -> {
-                if (u.getEmail() != null && u.getEmail().equalsIgnoreCase(req.email())) {
-                    throw new RuntimeException("Email already exists");
-                }
-            });
-        }
+        // 2. Kiểm tra trùng email (nếu cần thiết, bỏ comment dòng dưới)
+        // if (userRepo.findByEmail(req.email()).isPresent()) {
+        //    throw new RuntimeException("Email đã được sử dụng");
+        // }
 
+        // 3. Xác định Role (Mặc định là USER nếu lỗi hoặc null)
         Role role;
         try {
-            role = Role.valueOf((req.role() == null || req.role().isBlank()) ? "USER" : req.role().toUpperCase());
+            String roleStr = (req.role() == null || req.role().isBlank()) ? "USER" : req.role().toUpperCase();
+            // Map CLINIC_ADMIN từ FE về CLINIC trong DB nếu cần
+            if (roleStr.equals("CLINIC_ADMIN")) roleStr = "CLINIC";
+            role = Role.valueOf(roleStr);
         } catch (Exception e) {
             role = Role.USER;
         }
 
+        // 4. Khởi tạo User Entity
         User u = new User();
         u.setUsername(req.username());
-        u.setPassword(encoder.encode(req.password()));
+        u.setPassword(encoder.encode(req.password())); // Bắt buộc mã hóa
         u.setRole(role);
         u.setEmail(req.email());
-        u.setEnabled(true);
-
+        u.setEnabled(true); // Mặc định kích hoạt ngay (hoặc false nếu cần verify email)
+        
+        u.setFullName(req.fullName());
+        // Tách họ tên đơn giản nếu firstName/lastName null (Optional)
         u.setFirstName(req.firstName());
         u.setLastName(req.lastName());
-        u.setFullName(req.fullName());
-        u.setPhone(req.phone() != null ? req.phone() : req.clinicPhone());
+        
+        String phone = req.phone() != null ? req.phone() : req.clinicPhone();
+        u.setPhone(phone);
 
-        // If role = CLINIC, create clinic record as PENDING + bind to user
+        // 5. Xử lý Logic riêng cho Phòng Khám (CLINIC)
         if (role == Role.CLINIC) {
             Clinic c = new Clinic();
-            c.setName(req.clinicName() != null ? req.clinicName() : "Clinic");
-            c.setStatus(ClinicStatus.PENDING);
+            c.setName(req.clinicName() != null ? req.clinicName() : "Phòng khám chưa đặt tên");
+            c.setStatus(ClinicStatus.PENDING); // Chờ Admin duyệt
             c.setAddress(req.clinicAddress());
             c.setPhone(req.clinicPhone());
             c.setLicenseNo(req.licenseNo());
-            c = clinicRepo.save(c);
-            u.setClinic(c);
+            
+            c = clinicRepo.save(c); // Lưu Clinic trước
+            u.setClinic(c);         // Gán Clinic cho User
         }
 
         return userRepo.save(u);
