@@ -1,11 +1,12 @@
 package com.aura.retinal.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties; // Import mới
 import jakarta.persistence.*;
-
 import java.time.Instant;
 
 @Entity
 @Table(name="clinics")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"}) // <--- THÊM DÒNG NÀY ĐỂ SỬA LỖI
 public class Clinic {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -27,7 +28,10 @@ public class Clinic {
     @Column(nullable=false)
     private ClinicStatus status = ClinicStatus.PENDING;
 
+    // --- GETTERS & SETTERS ---
+
     public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

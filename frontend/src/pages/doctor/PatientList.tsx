@@ -19,163 +19,203 @@ import {
   Alert,
   Chip,
   Stack,
+  CircularProgress
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import { useNavigate } from "react-router-dom";
-import { listPatients } from "../../api/doctorApi";
+import { getAssignedAnalyses } from "../../api/analysisApi"; // Sử dụng API mới
 
-type PatientSummary = {
-  id?: string | number;
-  userId?: string | number;
-  username?: string;
-  fullName?: string;
-  name?: string;
-  age?: number;
-  latestAnalysisId?: string;
+// Định nghĩa kiểu dữ liệu trả về từ API getAssignedAnalyses
+type AnalysisItem = {
+  id: string;
+  originalUrl?: string;
   predLabel?: string;
   riskLevel?: string;
+  status: string; // QUEUED, COMPLETED, REVIEWED
+  createdAt: string;
+  doctorConclusion?: string;
 };
 
-function riskText(p: PatientSummary) {
-  if (!p.latestAnalysisId) return { label: "Chưa có kết quả", tone: "default" as const };
-
-  const rl = (p.riskLevel || "").toUpperCase();
-  if (rl === "HIGH") return { label: "Nguy cơ cao", tone: "error" as const };
-  if (rl === "MED") return { label: "Nguy cơ", tone: "warning" as const };
-  if (rl === "LOW") return { label: "Bình thường", tone: "success" as const };
-  if (rl === "QUALITY_LOW") return { label: "Chất lượng ảnh kém", tone: "default" as const };
-
-  // fallback for older records
-  const l = (p.predLabel || "").toLowerCase();
-  if (l.includes("glau")) return { label: "Nguy cơ cao", tone: "error" as const };
-  if (l.includes("dr") || l.includes("diab")) return { label: "Nguy cơ", tone: "warning" as const };
-  if (l.includes("normal") || l.includes("healthy")) return { label: "Bình thường", tone: "success" as const };
-  return { label: p.predLabel || "—", tone: "default" as const };
+// Hàm tiện ích để hiển thị màu sắc mức độ nguy cơ
+function getRiskConfig(riskLevel?: string) {
+  const rl = (riskLevel || "").toUpperCase();
+  if (rl === "HIGH") return { label: "Nguy cơ cao", color: "error" as const };
+  if (rl === "MED") return { label: "Nguy cơ trung bình", color: "warning" as const };
+  if (rl === "LOW") return { label: "Bình thường", color: "success" as const };
+  return { label: "Chưa xác định", color: "default" as const };
 }
 
 export default function PatientList() {
   const [search, setSearch] = useState("");
-  const [risk, setRisk] = useState<string>("ALL");
-  const [patients, setPatients] = useState<PatientSummary[]>([]);
+  const [filterStatus, setFilterStatus] = useState<string>("ALL");
+  const [analyses, setAnalyses] = useState<AnalysisItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
+  // Gọi API lấy danh sách khi component được tải
   useEffect(() => {
     (async () => {
       try {
-        const data = await listPatients();
-        const items = Array.isArray(data) ? data : data?.items || data?.content || [];
-        setPatients(items);
+        setLoading(true);
+        const data = await getAssignedAnalyses();
+        // Kiểm tra dữ liệu trả về có phải mảng không
+        const items = Array.isArray(data) ? data : [];
+        setAnalyses(items);
+        setLoading(false);
       } catch (e: any) {
-        setError(e?.response?.data?.message || "Không tải được danh sách bệnh nhân.");
+        console.error(e);
+        setError("Không thể tải danh sách hồ sơ bệnh nhân.");
+        setLoading(false);
       }
     })();
   }, []);
 
+  // Xử lý lọc và tìm kiếm trên Client
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return patients.filter((p) => {
-      const hay = `${p.name || ""} ${p.fullName || ""} ${p.username || ""} ${p.id || ""} ${p.userId || ""}`.toLowerCase();
-      const okQ = !q || hay.includes(q);
+    return analyses.filter((item) => {
+      // Tìm kiếm theo ID hồ sơ hoặc Kết luận (nếu có)
+      const hay = `${item.id} ${item.doctorConclusion || ""} ${item.predLabel || ""}`.toLowerCase();
+      const matchSearch = !q || hay.includes(q);
 
-      const rl = (p.riskLevel || "QUALITY_LOW").toUpperCase();
-      const okR = risk === "ALL" ? true : rl === risk;
+      // Lọc theo trạng thái (Đã duyệt / Chờ duyệt)
+      let matchStatus = true;
+      if (filterStatus === "PENDING") matchStatus = item.status !== "REVIEWED";
+      if (filterStatus === "REVIEWED") matchStatus = item.status === "REVIEWED";
 
-      return okQ && okR;
+      return matchSearch && matchStatus;
     });
-  }, [patients, search, risk]);
+  }, [analyses, search, filterStatus]);
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 2 }}>
-        <Typography variant="h4" fontWeight="bold">
-          Quản lý bệnh nhân
+      <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 3 }}>
+        <Typography variant="h4" fontWeight="bold" color="primary">
+          Danh sách hồ sơ cần duyệt
         </Typography>
-        <Button variant="outlined" onClick={() => navigate("/doctor/dashboard")}>Dashboard</Button>
+        <Button variant="outlined" onClick={() => navigate("/doctor/dashboard")}>
+          Quay lại Dashboard
+        </Button>
       </Stack>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
           {error}
         </Alert>
       )}
 
-      <TextField
-        fullWidth
-        placeholder="Tìm theo tên, username, mã BN..."
-        sx={{ mb: 3, bgcolor: "white" }}
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <SearchIcon />
-            </InputAdornment>
-          ),
-        }}
-      />
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 3 }}>
+        <TextField
+          placeholder="Tìm theo Mã hồ sơ, Kết quả AI..."
+          variant="outlined"
+          size="small"
+          fullWidth
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon />
+              </InputAdornment>
+            ),
+          }}
+          sx={{ bgcolor: "white" }}
+        />
 
-      <FormControl sx={{ mb: 3, width: 260, bgcolor: "white" }} size="small">
-        <InputLabel id="risk-filter">Lọc theo nguy cơ</InputLabel>
-        <Select
-          labelId="risk-filter"
-          label="Lọc theo nguy cơ"
-          value={risk}
-          onChange={(e) => setRisk(String(e.target.value))}
-        >
-          <MenuItem value="ALL">Tất cả</MenuItem>
-          <MenuItem value="HIGH">HIGH (Nguy cơ cao)</MenuItem>
-          <MenuItem value="MED">MED (Nguy cơ)</MenuItem>
-          <MenuItem value="LOW">LOW (Bình thường)</MenuItem>
-          <MenuItem value="QUALITY_LOW">QUALITY_LOW (Ảnh kém)</MenuItem>
-        </Select>
-      </FormControl>
+        <FormControl size="small" sx={{ minWidth: 200, bgcolor: "white" }}>
+          <InputLabel id="status-filter">Trạng thái duyệt</InputLabel>
+          <Select
+            labelId="status-filter"
+            label="Trạng thái duyệt"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
+            <MenuItem value="ALL">Tất cả</MenuItem>
+            <MenuItem value="PENDING">Chờ duyệt (Mới)</MenuItem>
+            <MenuItem value="REVIEWED">Đã duyệt</MenuItem>
+          </Select>
+        </FormControl>
+      </Stack>
 
-      <TableContainer component={Paper} sx={{ borderRadius: 3 }}>
+      <TableContainer component={Paper} elevation={2} sx={{ borderRadius: 2 }}>
         <Table>
           <TableHead sx={{ bgcolor: "#f5f5f5" }}>
             <TableRow>
-              <TableCell>Mã BN</TableCell>
-              <TableCell>Họ tên</TableCell>
-              <TableCell>Tuổi</TableCell>
-              <TableCell>Tình trạng</TableCell>
+              <TableCell width="10%">Ảnh</TableCell>
+              <TableCell width="20%">Mã Hồ Sơ / Ngày gửi</TableCell>
+              <TableCell width="25%">Dự đoán AI</TableCell>
+              <TableCell width="20%">Trạng thái</TableCell>
               <TableCell align="right">Thao tác</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {filtered.map((p) => {
-              const id = String(p.id ?? p.userId ?? "—");
-              const displayName = p.name || p.fullName || p.username || "—";
-              const risk = riskText(p);
-
-              return (
-                <TableRow key={`${id}-${p.latestAnalysisId || "none"}`} hover>
-                  <TableCell>{id}</TableCell>
-                  <TableCell>
-                    <Typography fontWeight={700}>{displayName}</Typography>
-                  </TableCell>
-                  <TableCell>{p.age ?? "—"}</TableCell>
-                  <TableCell>
-                    <Chip size="small" label={risk.label} color={risk.tone} variant={risk.tone === "default" ? "outlined" : "filled"} />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button
-                      variant="contained"
-                      size="small"
-                      disabled={!p.latestAnalysisId}
-                      onClick={() => navigate(`/doctor/result/${p.latestAnalysisId}`)}
-                    >
-                      Xem kết quả
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-
-            {filtered.length === 0 && (
+            {loading ? (
               <TableRow>
-                <TableCell colSpan={5}>Chưa có dữ liệu.</TableCell>
+                <TableCell colSpan={5} align="center" sx={{ py: 3 }}>
+                  <CircularProgress size={24} /> <span style={{marginLeft: 10}}>Đang tải...</span>
+                </TableCell>
               </TableRow>
+            ) : filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} align="center" sx={{ py: 3, color: 'text.secondary' }}>
+                  Không tìm thấy hồ sơ nào.
+                </TableCell>
+              </TableRow>
+            ) : (
+              filtered.map((item) => {
+                const risk = getRiskConfig(item.riskLevel);
+                const isReviewed = item.status === "REVIEWED";
+
+                return (
+                  <TableRow key={item.id} hover>
+                    <TableCell>
+                      <img 
+                        src={item.originalUrl || "https://via.placeholder.com/80?text=No+Img"} 
+                        alt="Eye" 
+                        style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 4, border: "1px solid #ddd" }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight="bold" title={item.id}>
+                        {item.id.substring(0, 8)}...
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {new Date(item.createdAt).toLocaleString('vi-VN')}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{item.predLabel || "Chưa có kết quả"}</Typography>
+                      {item.riskLevel && (
+                        <Chip 
+                          label={risk.label} 
+                          color={risk.color} 
+                          size="small" 
+                          variant="outlined" 
+                          sx={{ mt: 0.5 }}
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Chip 
+                        label={isReviewed ? "Đã duyệt" : "Chờ xử lý"} 
+                        color={isReviewed ? "success" : "warning"}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Button
+                        variant="contained"
+                        size="small"
+                        color={isReviewed ? "info" : "primary"}
+                        onClick={() => navigate(`/doctor/review/${item.id}`)}
+                      >
+                        {isReviewed ? "Xem lại" : "Đánh giá"}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

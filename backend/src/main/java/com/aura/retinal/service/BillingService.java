@@ -1,20 +1,33 @@
 package com.aura.retinal.service;
 
-import com.aura.retinal.entity.*;
-import com.aura.retinal.repository.*;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.aura.retinal.entity.OrderTransaction;
+import com.aura.retinal.entity.ServicePackage;
+import com.aura.retinal.entity.User;
+import com.aura.retinal.entity.UserCredit;
+import com.aura.retinal.repository.OrderTransactionRepository;
+import com.aura.retinal.repository.ServicePackageRepository;
+import com.aura.retinal.repository.UserCreditRepository;
+import com.aura.retinal.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
 public class BillingService {
 
-    @Autowired private ServicePackageRepository packageRepo;
-    @Autowired private OrderTransactionRepository orderRepo;
-    @Autowired private UserCreditRepository creditRepo;
-    @Autowired private UserRepository userRepo;
+    private final ServicePackageRepository packageRepo;
+    private final OrderTransactionRepository orderRepo;
+    private final UserCreditRepository creditRepo;
+    private final UserRepository userRepo;
+
+    public BillingService(ServicePackageRepository packageRepo, OrderTransactionRepository orderRepo, UserCreditRepository creditRepo, UserRepository userRepo) {
+        this.packageRepo = packageRepo;
+        this.orderRepo = orderRepo;
+        this.creditRepo = creditRepo;
+        this.userRepo = userRepo;
+    }
 
     public List<ServicePackage> getActivePackages() {
         return packageRepo.findByActiveTrue();
@@ -22,72 +35,80 @@ public class BillingService {
 
     @Transactional
     public OrderTransaction purchasePackage(Long userId, Long packageId) {
-        User user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
-        ServicePackage pkg = packageRepo.findById(packageId).orElseThrow(() -> new RuntimeException("Package not found"));
+        User user = userRepo.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+        ServicePackage pkg = packageRepo.findById(packageId)
+                .orElseThrow(() -> new RuntimeException("Package not found: " + packageId));
 
-        // Tạo order
         OrderTransaction order = new OrderTransaction();
         order.setUser(user);
         order.setServicePackage(pkg);
         order.setAmount(pkg.getPrice());
-        order.setStatus("COMPLETED"); // Giả lập thanh toán thành công ngay
-        order.setPaymentMethod("MOCK_GATEWAY");
-        orderRepo.save(order);
+        order.setStatus("COMPLETED");
+        order.setPaymentMethod("DEMO_WALLET");
+        order.setCreatedAt(LocalDateTime.now());
+        
+        OrderTransaction savedOrder = orderRepo.save(order);
 
-        // Cộng credit
-        UserCredit credit = creditRepo.findByUser_Id(userId).orElse(new UserCredit(user));
-        int currentCredits = credit.getRemainingCredits() == null ? 0 : credit.getRemainingCredits();
-        credit.setRemainingCredits(currentCredits + pkg.getCredits());
+        UserCredit credit = creditRepo.findByUser_Id(userId).orElse(null);
+        if (credit == null) {
+            credit = new UserCredit();
+            credit.setUser(user);
+            credit.setRemainingCredits(0);
+        }
+        
+        int added = pkg.getCredits() != null ? pkg.getCredits() : 0;
+        credit.setRemainingCredits(credit.getRemainingCredits() + added);
+        credit.setUpdatedAt(LocalDateTime.now());
+        
         creditRepo.save(credit);
 
-        return order;
+        return savedOrder;
     }
 
     public UserCredit getUserCredit(Long userId) {
-        User user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
-        return creditRepo.findByUser_Id(userId).orElse(new UserCredit(user));
+        return creditRepo.findByUser_Id(userId).orElseGet(() -> {
+            UserCredit uc = new UserCredit();
+            uc.setRemainingCredits(0);
+            return uc;
+        });
     }
 
+    // --- CÁC HÀM BỊ THIẾU ĐÃ ĐƯỢC BỔ SUNG ---
+
+    /**
+     * Trừ 1 credit (Hàm cũ, giữ lại để tương thích nếu có chỗ gọi)
+     */
     @Transactional
     public boolean consumeCredit(Long userId) {
-        try {
-            consumeCredits(userId, 1);
-            return true;
-        } catch (RuntimeException ex) {
-            return false;
-        }
+        return consumeCredits(userId, 1);
     }
 
+    /**
+     * Trừ N credit (Hàm mới để fix lỗi AnalysisService)
+     */
+    @Transactional
+    public boolean consumeCredits(Long userId, int amount) {
+        UserCredit credit = creditRepo.findByUser_Id(userId).orElse(null);
+        if (credit != null && credit.getRemainingCredits() >= amount) {
+            credit.setRemainingCredits(credit.getRemainingCredits() - amount);
+            credit.setUpdatedAt(LocalDateTime.now());
+            creditRepo.save(credit);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Hoàn lại 1 credit (Hàm mới để fix lỗi AnalysisProcessingService)
+     */
     @Transactional
     public void refundCredit(Long userId) {
-        refundCredits(userId, 1);
-    }
-
-    @Transactional
-    public void consumeCredits(Long userId, int count) {
-        if (count <= 0) return;
-        User user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
-        UserCredit credit = creditRepo.findByUser_Id(userId).orElse(new UserCredit(user));
-        int current = credit.getRemainingCredits() == null ? 0 : credit.getRemainingCredits();
-        if (current < count) {
-            throw new RuntimeException("Not enough credits");
+        UserCredit credit = creditRepo.findByUser_Id(userId).orElse(null);
+        if (credit != null) {
+            credit.setRemainingCredits(credit.getRemainingCredits() + 1);
+            credit.setUpdatedAt(LocalDateTime.now());
+            creditRepo.save(credit);
         }
-        credit.setRemainingCredits(current - count);
-        int used = credit.getTotalUsed() == null ? 0 : credit.getTotalUsed();
-        credit.setTotalUsed(used + count);
-        creditRepo.save(credit);
     }
-
-    @Transactional
-    public void refundCredits(Long userId, int count) {
-        if (count <= 0) return;
-        User user = userRepo.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
-        UserCredit credit = creditRepo.findByUser_Id(userId).orElse(new UserCredit(user));
-        int current = credit.getRemainingCredits() == null ? 0 : credit.getRemainingCredits();
-        credit.setRemainingCredits(current + count);
-        int used = credit.getTotalUsed() == null ? 0 : credit.getTotalUsed();
-        credit.setTotalUsed(Math.max(0, used - count));
-        creditRepo.save(credit);
-    }
-
 }

@@ -25,10 +25,6 @@ public class UserContextService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
     }
 
-    /**
-     * Best-effort current user lookup from SecurityContext.
-     * Returns null if unauthenticated.
-     */
     public User tryGetUser() {
         try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();

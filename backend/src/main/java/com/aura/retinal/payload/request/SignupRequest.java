@@ -6,7 +6,9 @@ public class SignupRequest {
     private String password;
     private String fullName;
     private String role;
+    private Long clinicId; // <-- THÊM MỚI
 
+    // Getters & Setters
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
 
@@ -21,4 +23,7 @@ public class SignupRequest {
 
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
+
+    public Long getClinicId() { return clinicId; }
+    public void setClinicId(Long clinicId) { this.clinicId = clinicId; }
 }

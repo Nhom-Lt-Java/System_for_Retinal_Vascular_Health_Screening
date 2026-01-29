@@ -46,6 +46,10 @@ const Navbar = () => {
                 <>
                   <Link to="/doctor/dashboard" className="hover:text-blue-200 transition">Dashboard</Link>
                   <Link to="/doctor/patients" className="hover:text-blue-200 transition">Bệnh nhân</Link>
+                  {/* Thêm nút Chat cho Bác sĩ */}
+                  <Link to="/chat" className="hover:text-blue-200 transition flex items-center gap-2">
+                    <MessageSquareText size={16} /> Chat
+                  </Link>
                   <Link to="/doctor/trends" className="hover:text-blue-200 transition">Trend</Link>
                 </>
               )}
@@ -57,6 +61,10 @@ const Navbar = () => {
                   <Link to="/clinic/doctors" className="hover:text-blue-200 transition">Bác sĩ</Link>
                   <Link to="/clinic/patients" className="hover:text-blue-200 transition">Bệnh nhân</Link>
                   <Link to="/clinic/bulk" className="hover:text-blue-200 transition">Bulk upload</Link>
+                  {/* Thêm nút Chat cho Phòng khám */}
+                  <Link to="/chat" className="hover:text-blue-200 transition flex items-center gap-2">
+                    <MessageSquareText size={16} /> Chat
+                  </Link>
                   <Link to="/clinic/billing" className="hover:text-blue-200 transition flex items-center gap-2">
                     <CreditCard size={16} /> Gói dịch vụ
                   </Link>
@@ -72,6 +80,10 @@ const Navbar = () => {
                   <Link to="/admin/ai-settings" className="hover:text-blue-200 transition flex items-center gap-2">
                     <Settings size={16} /> AI settings
                   </Link>
+                  {/* Thêm nút Chat cho Admin */}
+                  <Link to="/chat" className="hover:text-blue-200 transition flex items-center gap-2">
+                    <MessageSquareText size={16} /> Chat
+                  </Link>
                   <Link to="/admin/pricing" className="hover:text-blue-200 transition flex items-center gap-2">
                     <CreditCard size={16} /> Gói & giá
                   </Link>
@@ -83,7 +95,7 @@ const Navbar = () => {
                 <Bell size={18} /> Thông báo
               </Link>
 
-              {/* Quick chat shortcut: for demo, go to assigned doctor if USER */}
+              {/* Quick chat shortcut for USER */}
               {normalizedRole === "USER" && user?.assignedDoctorId && (
                 <Link to={`/chat/${user.assignedDoctorId}`} className="hover:text-blue-200 transition flex items-center gap-2">
                   <MessageSquareText size={18} /> Chat bác sĩ

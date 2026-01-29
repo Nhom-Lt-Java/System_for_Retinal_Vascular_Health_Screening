@@ -1,7 +1,6 @@
 package com.aura.retinal.entity;
 
 import jakarta.persistence.*;
-
 import java.time.Instant;
 
 @Entity
@@ -32,12 +31,21 @@ public class AnalysisJob {
     @Column(nullable = false)
     private Instant updatedAt = Instant.now();
 
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) createdAt = Instant.now();
+        if (updatedAt == null) updatedAt = Instant.now();
+        if (status == null) status = "QUEUED";
+    }
+
     @PreUpdate
     public void preUpdate() {
         this.updatedAt = Instant.now();
     }
 
+    // Getters and Setters
     public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
     public Analysis getAnalysis() { return analysis; }
     public void setAnalysis(Analysis analysis) { this.analysis = analysis; }

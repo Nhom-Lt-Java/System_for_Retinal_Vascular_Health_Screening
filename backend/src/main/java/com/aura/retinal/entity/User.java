@@ -1,6 +1,7 @@
 package com.aura.retinal.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties; // Import mới
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import jakarta.persistence.*;
@@ -11,6 +12,7 @@ import java.time.LocalDate;
 
 @Entity
 @Table(name = "users")
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"}) // <--- THÊM DÒNG NÀY ĐỂ SỬA LỖI
 public class User {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -68,7 +70,10 @@ public class User {
         }
     }
 
+    // --- GETTERS & SETTERS ---
+
     public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; } // Thêm setter ID cho an toàn
 
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
