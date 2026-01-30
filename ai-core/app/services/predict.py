@@ -13,8 +13,8 @@ from torchvision import transforms
 
 from minio import Minio
 
-from artifacts.models.disease_classifier import build_disease_classifier
-from artifacts.models.attention_r2unet import AttentionR2UNet
+from ml.models.disease_classifier import build_disease_classifier
+from ml.models.attention_r2unet import AttentionR2UNet
 
 try:
     import segmentation_models_pytorch as smp
