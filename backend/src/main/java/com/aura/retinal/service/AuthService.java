@@ -27,86 +27,82 @@ public class AuthService {
         this.encoder = encoder;
     }
 
-    /**
-     * Authenticate with username OR email.
-     * Returns the User if valid, otherwise throws RuntimeException.
-     */
     public User authenticate(String identifier, String password) {
         if (identifier == null || identifier.isBlank()) {
-            throw new RuntimeException("Missing username/email");
+            throw new RuntimeException("Tài khoản không được để trống");
         }
-
         User user = userRepo.findByUsernameOrEmail(identifier, identifier)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("Tài khoản hoặc mật khẩu không đúng"));
 
         if (!user.isEnabled()) {
-            throw new RuntimeException("Account disabled");
+            throw new RuntimeException("Tài khoản đã bị vô hiệu hóa");
         }
 
         if (!encoder.matches(password, user.getPassword())) {
-            throw new RuntimeException("Wrong password");
+            throw new RuntimeException("Tài khoản hoặc mật khẩu không đúng");
         }
-
-        // Demo rule: if clinic is not approved, block CLINIC and DOCTOR login
-        if ((user.getRole() == Role.CLINIC || user.getRole() == Role.DOCTOR)
-                && user.getClinic() != null
-                && user.getClinic().getStatus() != ClinicStatus.APPROVED) {
-            throw new RuntimeException("Clinic not approved");
-        }
-
         return user;
     }
 
     public String login(String identifier, String password) {
         User user = authenticate(identifier, password);
-        // JWT subject uses username for consistency
         return jwtUtil.generateToken(user.getUsername());
     }
 
     @Transactional
     public User register(RegisterRequest req) {
-        if (userRepo.findByUsername(req.username()).isPresent()) {
-            throw new RuntimeException("Username already exists");
+        // 1. Kiểm tra trùng username (Dùng getter)
+        if (userRepo.findByUsername(req.getUsername()).isPresent()) {
+            throw new RuntimeException("Tên đăng nhập đã tồn tại");
         }
 
-        if (req.email() != null && !req.email().isBlank()) {
-            // quick pre-check for nicer message; DB constraint is the source of truth
-            userRepo.findByUsernameOrEmail(req.email(), req.email()).ifPresent(u -> {
-                if (u.getEmail() != null && u.getEmail().equalsIgnoreCase(req.email())) {
-                    throw new RuntimeException("Email already exists");
-                }
-            });
-        }
-
+        // 2. Xác định Role
         Role role;
         try {
-            role = Role.valueOf((req.role() == null || req.role().isBlank()) ? "USER" : req.role().toUpperCase());
+            String roleStr = (req.getRole() == null || req.getRole().isBlank()) ? "USER" : req.getRole().toUpperCase();
+            if (roleStr.equals("CLINIC_ADMIN")) roleStr = "CLINIC";
+            role = Role.valueOf(roleStr);
         } catch (Exception e) {
             role = Role.USER;
         }
 
+        // 3. Khởi tạo User Entity
         User u = new User();
-        u.setUsername(req.username());
-        u.setPassword(encoder.encode(req.password()));
+        u.setUsername(req.getUsername());
+        u.setPassword(encoder.encode(req.getPassword()));
         u.setRole(role);
-        u.setEmail(req.email());
+        u.setEmail(req.getEmail());
         u.setEnabled(true);
+        
+        u.setFullName(req.getFullName());
+        u.setFirstName(req.getFirstName());
+        u.setLastName(req.getLastName());
+        
+        // Ưu tiên số điện thoại cá nhân, nếu không có thì lấy số phòng khám
+        String phone = req.getPhone() != null ? req.getPhone() : req.getClinicPhone();
+        u.setPhone(phone);
 
-        u.setFirstName(req.firstName());
-        u.setLastName(req.lastName());
-        u.setFullName(req.fullName());
-        u.setPhone(req.phone() != null ? req.phone() : req.clinicPhone());
+        // 4. Xử lý Logic Phòng Khám
 
-        // If role = CLINIC, create clinic record as PENDING + bind to user
+        // Trường hợp A: CLINIC ADMIN tạo phòng khám mới
         if (role == Role.CLINIC) {
             Clinic c = new Clinic();
-            c.setName(req.clinicName() != null ? req.clinicName() : "Clinic");
+            c.setName(req.getClinicName() != null ? req.getClinicName() : "Phòng khám chưa đặt tên");
             c.setStatus(ClinicStatus.PENDING);
-            c.setAddress(req.clinicAddress());
-            c.setPhone(req.clinicPhone());
-            c.setLicenseNo(req.licenseNo());
+            c.setAddress(req.getClinicAddress());
+            c.setPhone(req.getClinicPhone());
+            c.setLicenseNo(req.getLicenseNo());
+            
             c = clinicRepo.save(c);
             u.setClinic(c);
+        }
+        
+        // Trường hợp B: USER (Bệnh nhân) chọn phòng khám có sẵn (Logic Mới)
+        else if (role == Role.USER && req.getClinicId() != null) {
+            Clinic existingClinic = clinicRepo.findById(req.getClinicId()).orElse(null);
+            if (existingClinic != null) {
+                u.setClinic(existingClinic);
+            }
         }
 
         return userRepo.save(u);

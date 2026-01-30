@@ -94,13 +94,13 @@ export default function ClinicDashboard() {
         <Box display="flex" justifyContent="center" py={6}><CircularProgress /></Box>
       ) : (
         <Grid container spacing={3}>
-          <Grid item xs={12} md={4}>
+          <Grid xs={12} md={4}>
             <Paper sx={{ p: 3, borderRadius: 3 }}>
               <Typography color="textSecondary" fontWeight="bold">Tổng số ca phân tích</Typography>
               <Typography variant="h3" sx={{ mt: 1, fontWeight: "bold" }}>{totalAnalyses}</Typography>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid xs={12} md={4}>
             <Paper sx={{ p: 3, borderRadius: 3 }}>
               <Typography color="textSecondary" fontWeight="bold">Nguy cơ cao</Typography>
               <Typography variant="h3" sx={{ mt: 1, fontWeight: "bold" }} color="error">
@@ -108,14 +108,14 @@ export default function ClinicDashboard() {
               </Typography>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={4}>
+          <Grid xs={12} md={4}>
             <Paper sx={{ p: 3, borderRadius: 3 }}>
               <Typography color="textSecondary" fontWeight="bold">Số bác sĩ</Typography>
               <Typography variant="h3" sx={{ mt: 1, fontWeight: "bold" }}>{doctors}</Typography>
             </Paper>
           </Grid>
 
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <Paper sx={{ p: 2, borderRadius: 3 }}>
               <Typography variant="h6" fontWeight="bold" color="primary" gutterBottom>
                 Hồ sơ xác minh phòng khám (FR-22)
@@ -141,7 +141,7 @@ export default function ClinicDashboard() {
             </Paper>
           </Grid>
 
-          <Grid item xs={12}>
+          <Grid xs={12}>
             <Paper sx={{ p: 2, borderRadius: 3, overflow: "hidden" }}>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
                 <Typography variant="h6" fontWeight="bold" color="primary">

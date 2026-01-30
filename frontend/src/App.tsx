@@ -3,35 +3,37 @@ import { useAuth } from "./context/AuthContext";
 import Navbar from "./components/Navbar";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-// Auth
+// Auth Components
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 
-// User
+// User Pages
 import Upload from "./pages/user/Upload";
 import Result from "./pages/user/Result";
 import History from "./pages/user/History";
 import Profile from "./pages/user/Profile";
 
-// Doctor
+// Doctor Pages
 import DoctorDashboard from "./pages/doctor/Dashboard";
 import PatientList from "./pages/doctor/PatientList";
 import DoctorTrends from "./pages/doctor/Trends";
+import DoctorReview from "./pages/doctor/DoctorReview"; // <--- IMPORT MỚI (Trang đánh giá)
+// Lưu ý: Nếu bạn muốn giữ trang xem kết quả cũ thì giữ DoctorResult, còn không thì dùng Result chung
 
-// Clinic
+// Clinic Pages
 import ClinicDashboard from "./pages/clinic/ClinicDashboard";
 import DoctorManager from "./pages/clinic/DoctorManager";
 import ClinicPatients from "./pages/clinic/Patients";
 import BulkUpload from "./pages/clinic/BulkUpload";
 
-// Admin
+// Admin Pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AISettings from "./pages/admin/AISettings";
 import PricingManager from "./pages/admin/PricingManager";
 import AdminUserManager from "./pages/admin/UserManager";
 import NotificationTemplates from "./pages/admin/NotificationTemplates";
 
-// Common
+// Common Pages
 import NotificationsPage from "./pages/common/Notifications";
 import ChatPage from "./pages/common/Chat";
 import Billing from "./pages/common/Billing";
@@ -43,13 +45,15 @@ function App() {
     : (role || "").toUpperCase() === "CLINIC_ADMIN" ? "CLINIC"
     : (role || "").toUpperCase();
 
-  if (loading) return <div className="h-screen flex items-center justify-center">Đang tải hệ thống...</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center font-semibold text-blue-600">Đang tải hệ thống AURA...</div>;
 
   return (
     <>
       <Navbar />
-      <div className="container mx-auto p-4 min-h-[calc(100vh-80px)]">
+      
+      <div className="container mx-auto p-0 min-h-[calc(100vh-80px)]"> 
         <Routes>
+          {/* Default Route */}
           <Route
             path="/"
             element={
@@ -61,8 +65,11 @@ function App() {
             }
           />
 
+          {/* Public Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+
+          {/* --- PROTECTED ROUTES --- */}
 
           {/* USER */}
           <Route element={<ProtectedRoute allowedRoles={["USER"]} />}>
@@ -77,7 +84,13 @@ function App() {
             <Route path="/doctor/dashboard" element={<DoctorDashboard />} />
             <Route path="/doctor/patients" element={<PatientList />} />
             <Route path="/doctor/trends" element={<DoctorTrends />} />
+            
+            {/* --- FIX LỖI: Đường dẫn Review trỏ vào component DoctorReview --- */}
+            {/* Xem chi tiết (có thể dùng chung component Result của User nếu chỉ cần xem) */}
             <Route path="/doctor/result/:id" element={<Result />} />
+            
+            {/* Trang đánh giá/kết luận (Quan trọng) */}
+            <Route path="/doctor/review/:id" element={<DoctorReview />} /> 
           </Route>
 
           {/* CLINIC */}
@@ -100,17 +113,20 @@ function App() {
             <Route path="/admin/result/:id" element={<Result />} />
           </Route>
 
-          {/* COMMON */}
+          {/* COMMON (Shared access) */}
           <Route element={<ProtectedRoute allowedRoles={["USER", "DOCTOR", "CLINIC", "ADMIN"]} />}>
             <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:otherId" element={<ChatPage />} />
             <Route path="/profile" element={<Profile />} />
           </Route>
 
+          {/* Catch all */}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>
     </>
   );
 }
+
 export default App;

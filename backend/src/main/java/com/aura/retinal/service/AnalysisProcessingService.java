@@ -2,17 +2,19 @@ package com.aura.retinal.service;
 
 import com.aura.retinal.ai.AiClient;
 import com.aura.retinal.ai.AiPredictResponse;
-import com.aura.retinal.entity.Analysis;
-import com.aura.retinal.entity.AnalysisJob;
-import com.aura.retinal.entity.StoredFile;
+import com.aura.retinal.entity.*;
 import com.aura.retinal.repository.AnalysisJobRepository;
 import com.aura.retinal.repository.AnalysisRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Transactional; // Import Transactional
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -48,21 +50,77 @@ public class AnalysisProcessingService {
         this.tx = new TransactionTemplate(txManager);
     }
 
-    /**
-     * Process one claimed job (job.status=RUNNING).
-     * IMPORTANT: this method is designed to be called from a worker thread.
-     */
+    // --- HÀM XỬ LÝ UPLOAD: Đã thêm @Transactional và Log để debug ---
+    @Transactional(rollbackFor = Exception.class)
+    public List<Analysis> processBulkUpload(User user, List<MultipartFile> files) {
+        System.out.println(">>> START processBulkUpload for user: " + user.getUsername());
+        
+        // 1. Kiểm tra và trừ tiền (Credit)
+        int requiredCredits = files.size();
+        boolean paid = billingService.consumeCredits(user.getId(), requiredCredits);
+        
+        if (!paid) {
+            System.err.println(">>> Không đủ tiền: " + user.getUsername());
+            throw new RuntimeException("Tài khoản không đủ lượt phân tích. Vui lòng mua thêm gói dịch vụ.");
+        }
+
+        List<Analysis> results = new ArrayList<>();
+
+        for (MultipartFile file : files) {
+            try {
+                // 2. Upload File (Dùng hàm upload của FileService như bạn đã cung cấp)
+                String originalFilename = file.getOriginalFilename();
+                String contentType = file.getContentType();
+                if (contentType == null || contentType.isBlank()) contentType = "application/octet-stream";
+                
+                String objectKey = "uploads/" + UUID.randomUUID() + "-" + originalFilename;
+                byte[] fileBytes = file.getBytes();
+
+                System.out.println(">>> Uploading file: " + originalFilename);
+                StoredFile storedFile = fileService.upload(objectKey, fileBytes, contentType);
+
+                // 3. Tạo Analysis
+                Analysis analysis = new Analysis();
+                analysis.setUser(user);
+                analysis.setOriginalFile(storedFile);
+                analysis.setStatus("QUEUED");
+                
+                Analysis savedAnalysis = analysisRepo.save(analysis);
+                System.out.println(">>> Created Analysis ID: " + savedAnalysis.getId());
+
+                // 4. Tạo Job
+                AnalysisJob job = new AnalysisJob();
+                job.setAnalysis(savedAnalysis);
+                job.setStatus("QUEUED");
+                job.setAttempts(0);
+                
+                jobRepo.save(job);
+                System.out.println(">>> Created Job for Analysis ID: " + savedAnalysis.getId());
+
+                results.add(savedAnalysis);
+
+            } catch (Exception e) {
+                System.err.println(">>> ERROR processing file: " + file.getOriginalFilename());
+                e.printStackTrace();
+                // Vì có @Transactional, nếu throw Exception ở đây, toàn bộ transaction (trừ tiền) sẽ rollback.
+                throw new RuntimeException("Lỗi khi xử lý file " + file.getOriginalFilename() + ": " + e.getMessage());
+            }
+        }
+        
+        System.out.println(">>> END processBulkUpload successfully.");
+        return results;
+    }
+
+    // --- WORKER LOGIC (Giữ nguyên) ---
     public void processJob(Long jobId, int maxAttempts) {
         JobContext ctx = tx.execute(status -> loadJobContext(jobId));
         if (ctx == null) return;
 
-        // If attempts already exceeded, fail fast and refund
         if (ctx.attempts() > maxAttempts) {
             markFailed(jobId, "Max attempts reached", true);
             return;
         }
 
-        // Mark analysis RUNNING
         markAnalysisRunning(ctx.analysisId());
 
         try {
@@ -72,18 +130,15 @@ public class AnalysisProcessingService {
 
             StoredFile original = fileService.get(ctx.originalFileId());
             byte[] bytes = fileService.downloadBytes(original.getId());
+            
             String ct = (original.getContentType() == null || original.getContentType().isBlank()) ? "image/jpeg" : original.getContentType();
             String filename = guessFilename(original.getObjectKey(), ct);
 
             AiPredictResponse ai = aiClient.predict(ctx.analysisId(), bytes, filename, ct);
 
-            // Save results
             applyAiResult(ctx.analysisId(), ai);
-
-            // Mark job COMPLETED
             markJobCompleted(jobId);
 
-            // Notify user
             if (ctx.userId() != null) {
                 notificationService.createFromTemplate(
                         ctx.userId(),
@@ -92,10 +147,8 @@ public class AnalysisProcessingService {
                 );
             }
 
-
         } catch (Exception ex) {
             String msg = (ex.getMessage() != null) ? ex.getMessage() : ex.getClass().getSimpleName();
-            // Decide retry or fail
             int attempts = tx.execute(status -> {
                 AnalysisJob j = jobRepo.findById(jobId).orElse(null);
                 return j != null && j.getAttempts() != null ? j.getAttempts() : 1;
@@ -189,20 +242,17 @@ public class AnalysisProcessingService {
             a.setPredConf(ai.pred_conf());
             a.setProbsJson(ai.probs());
 
-            // risk + advice (CDS)
             String risk = computeRiskLevel(ai.pred_label(), ai.pred_conf());
             a.setRiskLevel(risk);
             a.setAdviceJson(om.valueToTree(defaultAdvice(risk, ai.pred_label())));
             a.setStatus("COMPLETED");
             a.setErrorMessage(null);
 
-            // traceability
             a.setAiVersion(aiSettingService.getModelVersionOrDefault("0.1.0"));
             ObjectNode thresholds = om.createObjectNode();
             thresholds.put("vessel_threshold", ai.vessel_threshold());
             a.setThresholdsJson(thresholds);
 
-            // Register artifacts (AI core uploads to MinIO)
             AiPredictResponse.Artifacts art = ai.artifacts();
             if (art != null) {
                 String png = "image/png";
@@ -222,7 +272,6 @@ public class AnalysisProcessingService {
 
             analysisRepo.save(a);
 
-            // High-risk alert for assigned doctor (if any)
             if (a.getUser() != null && a.getUser().getAssignedDoctorId() != null && "HIGH".equalsIgnoreCase(a.getRiskLevel())) {
                 notificationService.createFromTemplate(
                         a.getUser().getAssignedDoctorId(),

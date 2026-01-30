@@ -5,18 +5,20 @@ export type ChatMessage = {
   senderId: number;
   receiverId: number;
   content: string;
-  timestamp?: string;
+  createdAt?: string; // Khớp với Backend
 };
 
 export async function getConversation(user1: number, user2: number) {
-  const res = await axiosClient.get(`/messages/history`, {
+  // Fix đường dẫn: /chat/history thay vì /messages/history
+  const res = await axiosClient.get(`/chat/history`, {
     params: { user1, user2 },
   });
   return res.data as ChatMessage[];
 }
 
 export async function sendMessage(senderId: number, receiverId: number, content: string) {
-  const res = await axiosClient.post(`/messages/send`, {
+  // Fix đường dẫn: /chat/send thay vì /messages/send
+  const res = await axiosClient.post(`/chat/send`, {
     senderId,
     receiverId,
     content,

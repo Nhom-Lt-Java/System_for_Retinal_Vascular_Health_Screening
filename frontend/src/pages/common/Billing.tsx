@@ -129,7 +129,8 @@ export default function Billing() {
       ) : (
         <Grid container spacing={3} justifyContent="center">
           {packages.map((plan) => (
-            <Grid item xs={12} md={4} key={plan.id}>
+            // FIX: Thay 'item xs={12} md={4}' bằng 'size={{ xs: 12, md: 4 }}'
+            <Grid key={plan.id} size={{ xs: 12, md: 4 }}>
               <Card sx={{ height: "100%", display: "flex", flexDirection: "column", borderRadius: 4 }}>
                 <CardContent sx={{ flexGrow: 1 }}>
                   <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
@@ -171,7 +172,8 @@ export default function Billing() {
             </Grid>
           ))}
           {packages.length === 0 && (
-            <Grid item xs={12}>
+            // FIX: Thay 'item xs={12}' bằng 'size={{ xs: 12 }}'
+            <Grid size={{ xs: 12 }}>
               <Alert severity="warning" sx={{ borderRadius: 2 }}>
                 Chưa có gói dịch vụ nào đang hoạt động.
               </Alert>

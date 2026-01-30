@@ -89,7 +89,7 @@ public class DoctorController {
                     if (!riskLower.isBlank()) return null;
                     return new PatientSummaryResponse(u.getId(), u.getUsername(), null, null, null, null, null);
                 })
-                .filter(r -> r != null)
+                .filter(Objects::nonNull)
                 .toList();
     }
 
@@ -140,6 +140,7 @@ public class DoctorController {
         feedbackRepo.save(fb);
 
         if (a.getUser() != null) {
+            // FIX: Removed the extra argument (a.getId()) because NotificationService.createNotification only accepts 4 arguments.
             notificationService.createNotification(
                     a.getUser().getId(),
                     "Bác sĩ đã duyệt kết quả",

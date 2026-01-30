@@ -4,10 +4,10 @@ export type ServicePackage = {
   id: number;
   name: string;
   description?: string;
-  price: number | string;
+  price: number;
   credits: number;
   durationDays?: number | null;
-  active: boolean;
+  active: boolean; 
 };
 
 export type UserCredit = {
@@ -32,8 +32,11 @@ export async function listPackages() {
 }
 
 export async function purchasePackage(userId: number, packageId: number) {
-  const res = await axiosClient.post(`/billing/purchase`, null, { params: { userId, packageId } });
-  return res.data as any;
+  // Gửi params khớp với @RequestParam bên Controller
+  const res = await axiosClient.post(`/billing/purchase`, null, { 
+    params: { userId, packageId } 
+  });
+  return res.data;
 }
 
 export async function getBalance(userId: number) {
